@@ -1,0 +1,15 @@
+# ZCode agent workspace artifacts
+.zcode/
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# OpenWrt build artifacts
+*.o
+*.ipk
+*.bin
+.tmp/
