@@ -415,9 +415,11 @@ get_geoip() {
 }
 
 # ------------------------------------------------------------------------------
-# BypassCore binary validation: a Linux ELF is required (the shipped macOS
-# Mach-O binary cannot run on OpenWrt). Returns 0 only when the path is an
-# executable Linux ELF.
+# BypassCore binary validation: a Linux ELF is required (the routing/split
+# engine). Release tarballs for OpenWrt are at
+# https://github.com/kinmeic/BypassCore/releases ; this guard rejects a
+# wrong-arch (e.g. darwin) binary so the LuCI status page can warn clearly.
+# Returns 0 only when the path is an executable Linux ELF.
 # ------------------------------------------------------------------------------
 
 is_elf() {
@@ -431,8 +433,8 @@ is_elf() {
 is_linux_elf() {
 	local path=$1
 	is_elf "$path" || return 1
-	# EI_OSABI is byte index 7 (0=SYSV/Linux-acceptable, 3=Linux). Reject macOS
-	# Mach-O (which is_elf already does) and obviously non-Linux ABIs.
+	# EI_OSABI is byte index 7 (0=SYSV/Linux-acceptable, 3=Linux). Reject wrong-
+	# arch binaries (e.g. darwin) and obviously non-Linux ABIs.
 	local osabi
 	osabi=$(od -An -tx1 -j7 -N1 "$path" 2>/dev/null | tr -d ' \n')
 	case "$osabi" in

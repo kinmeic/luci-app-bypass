@@ -3,9 +3,10 @@
 # SPDX-License-Identifier: MIT
 #
 # Orchestrator for luci-app-bypass. Read UCI, run the naiveproxy carrier, run
-# ChinaDNS-NG for split DNS, generate BypassCore's config.json for route
-# diagnostics, install the transparent-proxy firewall ruleset, and manage the
-# process lifecycle. Mirrors openwrt-passwall2/app.sh but in pure shell.
+# ChinaDNS-NG for split DNS, generate BypassCore's config.json (BypassCore is
+# the routing/split-decision engine; traffic is carried by naiveproxy), install
+# the transparent-proxy firewall ruleset, and manage the process lifecycle.
+# Mirrors openwrt-passwall2/app.sh but in pure shell.
 
 . /lib/functions.sh
 . /lib/functions/service.sh
@@ -220,7 +221,7 @@ run_chinadns_ng() {
 }
 
 # ------------------------------------------------------------------------------
-# BypassCore config.json (rule/diagnostic brain — NOT in the data path).
+# BypassCore config.json (routing/split-decision engine config).
 # Generated from the same UCI shunt_rules that feed the firewall/ipset plane.
 # ------------------------------------------------------------------------------
 
@@ -308,7 +309,7 @@ gen_bypasscore_config() {
 			# enable_concurrency omitted: jshn's json_add_boolean is unreliable
 			# across OpenWrt versions (can emit a string "true" that the Go proto
 			# bool rejects, failing the whole config parse). The field defaults
-			# to false in the proto, which is fine for diagnostics.
+			# to false in the proto, which is fine for the routing engine.
 		json_close_object
 	fi
 

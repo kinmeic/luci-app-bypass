@@ -53,7 +53,7 @@ return view.extend({
 
 		/* Binaries / paths */
 		o = s.option(form.Value, 'bypasscore_file', _('BypassCore binary'));
-		o.description = _('User-supplied Linux ELF. Diagnostics (route-test, observatory) auto-disable if missing or not a Linux ELF.');
+		o.description = _('Install the Linux ELF from https://github.com/kinmeic/BypassCore/releases (the routing/split engine). Route-test / resolve / observatory auto-disable if missing or not a Linux ELF.');
 		o.placeholder = '/usr/bin/bypasscore';
 
 		o = s.option(form.Value, 'naive_file', _('naive binary'));

@@ -53,7 +53,7 @@ do_route_test() {
 		json_add_string error "missing destination"
 	elif ! is_linux_elf "$BYPASSCORE_FILE" 2>/dev/null; then
 		json_add_int code -1
-		json_add_string error "bypasscore unavailable (set bypasscore_file to a Linux ELF binary)"
+		json_add_string error "bypasscore unavailable (set bypasscore_file to a Linux ELF from https://github.com/kinmeic/BypassCore/releases)"
 	else
 		local raw
 		raw=$("$BYPASSCORE_FILE" -config "$BYPASSCORE_CFG" -test "$dest" 2>&1)

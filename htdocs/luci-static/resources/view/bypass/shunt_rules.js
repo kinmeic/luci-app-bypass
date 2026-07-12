@@ -10,7 +10,7 @@ return view.extend({
 
 	render: function () {
 		var m = new form.Map('bypass', _('Shunt Rules'),
-			_('Routing rules shared by BypassCore (route diagnostics) and the firewall/ipset plane. domain_list and ip_list use v2ray rule prefixes: geosite:, geoip:, domain:, full:, regexp:, ext:, or bare CIDR/domain.'));
+			_('Routing rules consumed by BypassCore (the split/routing engine) and shared with the nftables/ipset plane. domain_list and ip_list use v2ray rule prefixes: geosite:, geoip:, domain:, full:, regexp:, ext:, or bare CIDR/domain.'));
 
 		var s = m.section(form.TypedSection, 'shunt_rules', _('Rules'));
 		s.addremove = true;

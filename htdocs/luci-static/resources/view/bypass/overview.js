@@ -55,8 +55,8 @@ return view.extend({
 		var rtResult = E('pre', { style: 'white-space:pre-wrap;min-height:40px;font-size:11px' }, _('Results appear here.'));
 
 		container.appendChild(E('div', { class: 'cbi-section' }, [
-			E('h3', {}, _('Route test (BypassCore)')),
-			E('p', {}, _('Preview which shunt rule/outbound a destination matches. Requires the BypassCore Linux ELF binary.')),
+			E('h3', {}, _('BypassCore route test')),
+			E('p', {}, _('Preview which shunt rule / outbound a destination matches, using the BypassCore routing engine. Requires the BypassCore Linux ELF binary.')),
 			E('div', { style: 'margin-bottom:8px' }, [
 				rtInput, ' ',
 				E('button', {
@@ -94,7 +94,7 @@ return view.extend({
 		var cfgPre = E('pre', { style: 'white-space:pre-wrap;max-height:420px;overflow:auto;font-size:11px' }, _('Click to generate/preview.'));
 		container.appendChild(E('div', { class: 'cbi-section' }, [
 			E('h3', {}, _('BypassCore config.json preview')),
-			E('p', {}, _('The config generated from your shunt rules — fed to bypasscore for diagnostics. BypassCore itself is NOT in the data path.')),
+			E('p', {}, _('The config generated from your shunt rules and fed to BypassCore (the routing engine). Traffic itself is carried by naiveproxy.')),
 			E('button', {
 				class: 'cbi-button cbi-button-action',
 				click: function () {
