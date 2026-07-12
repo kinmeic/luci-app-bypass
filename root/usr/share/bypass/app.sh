@@ -61,6 +61,12 @@ get_config() {
 	BYPASSCORE_FILE=$(config_t_get global bypasscore_file /usr/bin/bypasscore)
 	NAIVE_BIN=$(first_type "$(config_t_get global naive_file /usr/bin/naive)" naive)
 	CHINADNS_BIN=$(first_type "$(config_t_get global chinadns_file /usr/bin/chinadns-ng)" chinadns-ng)
+	# bypass_as_core=1: BypassCore runs `-run` as the transparent proxy core
+	# (inbound + sniff + route); naiveproxy is demoted to a SOCKS upstream that
+	# BypassCore's `proxy` outbound dials into. Requires BypassCore's proxy-mode
+	# SOCKS5 dialer (pending upstream). =0 (default, legacy): naiveproxy carries
+	# traffic, BypassCore is diagnostic-only.
+	BYPASS_AS_CORE=$(config_t_get global bypass_as_core 0)
 	V2RAY_LOCATION_ASSET=$(config_t_get global_rules v2ray_location_asset /usr/share/v2ray/)
 	DOMAIN_STRATEGY=$(config_t_get global_rules domainStrategy IpIfNonMatch)
 
@@ -116,13 +122,19 @@ run_naive() {
 	local server_host=$address
 	echo "$address" | grep -qE "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" && server_host="[$address]"
 
-	# Listen mode from tcp_proxy_way. The upstream naive binary supports
-	# socks|http|redir in every build; tproxy needs a build compiled with it.
+	# In bypass_as_core mode, naive does NOT open the redir/tproxy listener
+	# (BypassCore owns the transparent inbound on REDIR_PORT). naive only runs
+	# a SOCKS listener that BypassCore's `proxy` outbound dials into.
+	local run_redir=1
+	[ "$BYPASS_AS_CORE" = "1" ] && run_redir=0
+
 	local listen_proto
-	case "$TCP_PROXY_WAY" in
-		tproxy)   listen_proto="tproxy"; log 0 "Warning: tproxy mode needs a naive build compiled with tproxy support." ;;
-		tun|redirect|*) listen_proto="redir" ;;
-	esac
+	if [ "$run_redir" = "1" ]; then
+		case "$TCP_PROXY_WAY" in
+			tproxy)   listen_proto="tproxy"; log 0 "Warning: tproxy mode needs a naive build compiled with tproxy support." ;;
+			tun|redirect|*) listen_proto="redir" ;;
+		esac
+	fi
 
 	local cfg_dir=$TMP_ACL_PATH
 	mkdir -p "$cfg_dir"
@@ -130,12 +142,14 @@ run_naive() {
 	local log_file="${cfg_dir}/naive.log"
 	[ "$LOGLEVEL" = "debug" ] || log_file="/dev/null"
 
-	# naiveproxy config (https-only proxy URL).
-	json_init
-	json_add_string "listen" "${listen_proto}://127.0.0.1:${REDIR_PORT}"
-	json_add_string "proxy" "https://${username}:${password}@${server_host}:${port}"
-	[ "$log_file" != "/dev/null" ] && json_add_string "log" "$log_file"
-	json_dump > "$config_file"
+	# naiveproxy transparent listener (legacy mode only).
+	if [ "$run_redir" = "1" ]; then
+		json_init
+		json_add_string "listen" "${listen_proto}://127.0.0.1:${REDIR_PORT}"
+		json_add_string "proxy" "https://${username}:${password}@${server_host}:${port}"
+		[ "$log_file" != "/dev/null" ] && json_add_string "log" "$log_file"
+		json_dump > "$config_file"
+	fi
 
 	# Egress policy routing: resolve the naive server IP(s) and install the
 	# fwmark/route so the naive -> server connection leaves via the chosen
@@ -158,15 +172,22 @@ run_naive() {
 	[ "$log_file" != "/dev/null" ] && json_add_string "log" "$log_file"
 	json_dump > "$socks_cfg"
 
-	ln_run ${QUEUE_RUN} "$NAIVE_BIN" "$NAIVE_TAG" "$log_file" "$config_file"
+	if [ "$run_redir" = "1" ]; then
+		ln_run ${QUEUE_RUN} "$NAIVE_BIN" "$NAIVE_TAG" "$log_file" "$config_file"
+	fi
 	ln_run ${QUEUE_RUN} "$NAIVE_BIN" "${NAIVE_TAG}_socks" "/dev/null" "$socks_cfg"
 
 	NAIVE_OK=1
 	set_cache_var GLOBAL_SOCKS_server "127.0.0.1:${NODE_SOCKS_PORT}"
 	set_cache_var ACL_GLOBAL_node "$NODE"
-	set_cache_var ACL_GLOBAL_redir_port "$REDIR_PORT"
-	log 0 "naiveproxy: %s listen=%s://%s, proxy=https://%s:%s@%s:%s" \
-		"$NODE" "$listen_proto" "127.0.0.1:${REDIR_PORT}" "${username}" "${password:+***}" "$server_host" "$port"
+	if [ "$run_redir" = "1" ]; then
+		set_cache_var ACL_GLOBAL_redir_port "$REDIR_PORT"
+		log 0 "naiveproxy: %s listen=%s://%s, proxy=https://%s:%s@%s:%s" \
+			"$NODE" "$listen_proto" "127.0.0.1:${REDIR_PORT}" "${username}" "${password:+***}" "$server_host" "$port"
+	else
+		log 0 "naiveproxy (socks upstream for BypassCore): %s socks://127.0.0.1:%s, proxy=https://%s:%s@%s:%s" \
+			"$NODE" "$NODE_SOCKS_PORT" "${username}" "${password:+***}" "$server_host" "$port"
+	fi
 }
 
 # ------------------------------------------------------------------------------
@@ -368,8 +389,47 @@ gen_bypasscore_config() {
 		json_close_object
 	fi
 
+	# inbounds: only emitted in bypass_as_core mode. BypassCore listens on
+	# REDIR_PORT as a TCP transparent-proxy listener (redirect mode, recovers
+	# the original dst via SO_ORIGINAL_DST) and sniffs TLS/HTTP to recover the
+	# domain. nftables REDIRECT sends traffic here instead of to naiveproxy.
+	if [ "$BYPASS_AS_CORE" = "1" ]; then
+		json_add_array inbounds
+			json_add_object ''
+				json_add_string tag "tcp_redir"
+				json_add_string type "redirect"
+				json_add_string listen "127.0.0.1"
+				json_add_int port "$REDIR_PORT"
+				json_add_string network "tcp"
+				json_add_boolean sniffing 1
+			json_close_object
+		json_close_array
+	fi
+
 	json_dump > "$BYPASSCORE_CFG"
-	log 0 "BypassCore config written to %s." "$BYPASSCORE_CFG"
+	log 0 "BypassCore config written to %s (bypass_as_core=%s)." "$BYPASSCORE_CFG" "$BYPASS_AS_CORE"
+}
+
+# ------------------------------------------------------------------------------
+# BypassCore as transparent core: `bypasscore -run -c <cfg>` (daemon). Only
+# used when bypass_as_core=1. Needs BypassCore's proxy-mode SOCKS5 dialer to
+# be useful for "proxy" routes (until then only direct/blackhole work).
+# ------------------------------------------------------------------------------
+run_bypasscore_core() {
+	[ "$BYPASS_AS_CORE" = "1" ] || return 0
+	if ! is_linux_elf "$BYPASSCORE_FILE" 2>/dev/null; then
+		log 0 "bypass_as_core=1 but bypasscore is missing/not a Linux ELF; cannot run as core. Falling back to legacy (naiveproxy carrier)."
+		return 1
+	fi
+	gen_bypasscore_config
+	local cfg_dir=$TMP_ACL_PATH
+	mkdir -p "$cfg_dir"
+	local log_file="${cfg_dir}/bypasscore.log"
+	[ "$LOGLEVEL" = "debug" ] || log_file="/dev/null"
+	ln_run ${QUEUE_RUN} "$BYPASSCORE_FILE" "bypasscore" "$log_file" -config "$BYPASSCORE_CFG" -run
+	BYPASSCORE_OK=1
+	set_cache_var ACL_GLOBAL_redir_port "$REDIR_PORT"
+	log 0 "BypassCore running as transparent core on tcp://127.0.0.1:%s (-run)." "$REDIR_PORT"
 }
 
 # ------------------------------------------------------------------------------
@@ -460,6 +520,7 @@ start() {
 	ulimit -n 65535 2>/dev/null
 
 	NAIVE_OK=0
+	BYPASSCORE_OK=0
 	CHINADNS_OK=0
 	check_run_environment
 
@@ -468,9 +529,13 @@ start() {
 			run_naive
 		}
 	}
+	# bypass_as_core: BypassCore runs -run as the transparent core. If it
+	# fails (e.g. bypasscore missing/non-ELF), run_naive already ran in legacy
+	# mode above so traffic still flows via naiveproxy.
+	run_bypasscore_core
 	run_chinadns_ng
 	run_dnsmasq_forward
-	gen_bypasscore_config
+	[ "$BYPASSCORE_OK" != "1" ] && gen_bypasscore_config
 
 	[ -n "$USE_TABLES" ] && source "$APP_PATH/${USE_TABLES}.sh" start
 	set_cache_var USE_TABLES "$USE_TABLES"

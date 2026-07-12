@@ -6,6 +6,12 @@ config global
 	option localhost_proxy '1'
 	option client_proxy '1'
 	option loglevel 'error'
+	# 0 (default/legacy): naiveproxy carries traffic; BypassCore is
+	# diagnostic-only (-test/-resolve/-observe). 1 (experimental): BypassCore
+	# runs `-run` as the transparent proxy core; naiveproxy is demoted to a
+	# SOCKS upstream. Mode 1 needs BypassCore's proxy-mode SOCKS5 dialer
+	# (pending upstream) to actually route "proxy" traffic.
+	option bypass_as_core '0'
 	option dns_redirect '1'
 	# BypassCore binary (install from https://github.com/kinmeic/BypassCore
 	# releases; must be a Linux ELF). The routing/split engine + Observatory
