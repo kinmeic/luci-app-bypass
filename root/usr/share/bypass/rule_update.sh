@@ -1,5 +1,6 @@
 #!/bin/sh
-# Copyright (C) 2026 eugene
+# Copyright (c) 2026 Eugene Chan
+# SPDX-License-Identifier: MIT
 #
 # Download and verify geoip.dat / geosite.dat into the BypassCore / v2ray asset
 # directory, then refresh the naive uplink IP set. Invoked by the LuCI

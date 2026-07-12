@@ -1,5 +1,6 @@
 #!/bin/sh
-# Copyright (C) 2026 eugene
+# Copyright (c) 2026 Eugene Chan
+# SPDX-License-Identifier: MIT
 #
 # nftables transparent-proxy backend for luci-app-bypass.
 #

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Copyright (C) 2026 eugene
+# Copyright (c) 2026 Eugene Chan
+# SPDX-License-Identifier: MIT
 #
-# Shared library for luci-app-bypass. Sourced by app.sh, the nftables/iptables
-# backends, the init script and the rpcd api.sh helper.
+# Shared library for luci-app-bypass. Sourced by app.sh, the nftables backend, the init script and the rpcd api.sh helper.
 #
 # Conventions mirror openwrt-passwall2/utils.sh but are trimmed: no Lua runtime,
 # no i18n indirection, plain-text logging.
@@ -448,10 +448,10 @@ is_linux_elf() {
 #   ip rule  fwmark <FWMARK> lookup <TABLE>
 #   ip route default [via <gw>] dev <iface> table <TABLE>
 # and resolve the naive server IP(s) into $TMP_PATH/uplink_ips (consumed by the
-# nftables/iptables backends, which install the matching mangle-OUTPUT mark
+# nftables backend, which installs the matching mangle-OUTPUT mark
 # rule + the bypass_uplink set).
 #
-# naive stays root, so tproxy/tun listen modes keep their capabilities.
+# naive stays root, so its listen mode keeps capabilities.
 # ------------------------------------------------------------------------------
 
 # resolve_uplink_ips <node_id>  -> writes $TMP_PATH/uplink_ips (one IPv4/line)

@@ -182,4 +182,4 @@ luci-app-bypass/
 
 ## 许可证
 
-GPL-3.0
+MIT（见 [LICENSE](LICENSE)）。

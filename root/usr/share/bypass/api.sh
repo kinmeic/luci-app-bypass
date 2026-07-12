@@ -1,5 +1,6 @@
 #!/bin/sh
-# Copyright (C) 2026 eugene
+# Copyright (c) 2026 Eugene Chan
+# SPDX-License-Identifier: MIT
 #
 # rpcd `file.exec` backend for luci-app-bypass. The LuCI JS frontend calls
 #   fs.exec('/usr/share/bypass/api.sh', [action, ...args])

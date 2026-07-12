@@ -1,5 +1,6 @@
 #!/bin/sh
-# Copyright (C) 2026 eugene
+# Copyright (c) 2026 Eugene Chan
+# SPDX-License-Identifier: MIT
 #
 # Orchestrator for luci-app-bypass. Read UCI, run the naiveproxy carrier, run
 # ChinaDNS-NG for split DNS, generate BypassCore's config.json for route

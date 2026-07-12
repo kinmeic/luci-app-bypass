@@ -1,6 +1,6 @@
-# Copyright (C) 2026 eugene
-#
-# This is free software, licensed under the GNU General Public License v3.
+# Copyright (c) 2026 Eugene Chan
+# SPDX-License-Identifier: MIT
+# This is free software, licensed under the MIT License.
 
 include $(TOPDIR)/rules.mk
 
@@ -8,6 +8,9 @@ PKG_NAME:=luci-app-bypass
 PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)
+PKG_LICENSE:=MIT
+PKG_LICENSE_FILES:=LICENSE
+PKG_MAINTAINER:=Eugene Chan
 
 # Build-system symbols that, when toggled in menuconfig, should trigger a rebuild.
 PKG_CONFIG_DEPENDS:= \
