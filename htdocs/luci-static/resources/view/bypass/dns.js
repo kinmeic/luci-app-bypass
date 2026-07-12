@@ -33,6 +33,21 @@ return view.extend({
 		o.datatype = 'port';
 		o.placeholder = '10553';
 
+		/* BypassCore DNS subsystem (the split-DNS engine; ChinaDNS-NG stays as
+		   the live resolver + ipset populator). These feed the 'dns' section of
+		   the generated config.json, used by 'bypasscore -resolve'. */
+		o = s.option(form.Value, 'bc_domestic_dns', _('BypassCore domestic DNS'));
+		o.description = _('Upstream for domestic domains in the BypassCore DNS section (UDP/TCP/DoT/DoH). Leave empty to disable the split (only the remote upstream is emitted).');
+		o.placeholder = 'https://223.5.5.5/dns-query';
+
+		o = s.option(form.Value, 'bc_remote_dns', _('BypassCore remote DNS'));
+		o.description = _('Upstream for everything else in the BypassCore DNS section.');
+		o.placeholder = 'https://1.1.1.1/dns-query';
+
+		o = s.option(form.Value, 'dns_split_domain', _('Domestic split domain'));
+		o.description = _('v2ray rule prefix that selects which domains use the domestic upstream (default geosite:cn).');
+		o.placeholder = 'geosite:cn';
+
 		return m.render();
 	}
 });

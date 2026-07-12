@@ -407,3 +407,36 @@ msgstr "用 BypassCore 路由引擎预览某目的地命中哪条分流规则 / 
 msgid "The config generated from your shunt rules and fed to BypassCore (the routing engine). Traffic itself is carried by naiveproxy."
 msgstr "由你的分流规则生成、供 BypassCore（路由引擎）使用的配置。流量本身由 naiveproxy 转发。"
 
+
+msgid "DNS resolve (BypassCore)"
+msgstr "DNS 解析（BypassCore）"
+
+msgid "Resolve a domain via BypassCore's DNS subsystem (the split-DNS engine; ChinaDNS-NG remains the live resolver)."
+msgstr "通过 BypassCore 的 DNS 子系统解析域名（分流 DNS 引擎；ChinaDNS-NG 仍作为实时解析器）。"
+
+msgid "Enter a domain to resolve."
+msgstr "请输入要解析的域名。"
+
+msgid "Resolve"
+msgstr "解析"
+
+msgid "Resolved IPs appear here."
+msgstr "解析到的 IP 显示在此。"
+
+msgid "BypassCore domestic DNS"
+msgstr "BypassCore 国内 DNS"
+
+msgid "Upstream for domestic domains in the BypassCore DNS section (UDP/TCP/DoT/DoH). Leave empty to disable the split (only the remote upstream is emitted)."
+msgstr "BypassCore DNS 段中用于国内域名的上游（UDP/TCP/DoT/DoH）。留空则禁用分流（只输出远程上游）。"
+
+msgid "BypassCore remote DNS"
+msgstr "BypassCore 远程 DNS"
+
+msgid "Upstream for everything else in the BypassCore DNS section."
+msgstr "BypassCore DNS 段中用于其余所有域名的上游。"
+
+msgid "Domestic split domain"
+msgstr "国内分流域名"
+
+msgid "v2ray rule prefix that selects which domains use the domestic upstream (default geosite:cn)."
+msgstr "v2ray 规则前缀，决定哪些域名使用国内上游（默认 geosite:cn）。"

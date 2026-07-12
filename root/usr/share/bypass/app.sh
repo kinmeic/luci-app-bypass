@@ -76,6 +76,12 @@ get_config() {
 	REMOTE_DNS=$(config_t_get global_dns remote_dns 1.1.1.1)
 	REMOTE_DNS_PROTOCOL=$(config_t_get global_dns remote_dns_protocol udp)
 	CHINADNS_PORT=$(config_t_get global_dns chinadns_listen_port 10553)
+	# BypassCore DNS subsystem (the real split-DNS engine; ChinaDNS-NG stays as
+	# an ipset/nftset populator mirroring passwall2). Empty upstream -> disabled.
+	BC_DOMESTIC_DNS=$(config_t_get global_dns bc_domestic_dns https://223.5.5.5/dns-query)
+	BC_REMOTE_DNS=$(config_t_get global_dns bc_remote_dns https://1.1.1.1/dns-query)
+	BC_QUERY_STRATEGY=$(config_t_get global_dns query_strategy UseIPv4)
+	DNS_SPLIT_DOMAIN=$(config_t_get global_dns dns_split_domain geosite:cn)
 
 	# Egress (dest-IP fwmark policy routing).
 	DEFAULT_EGRESS_IFACE=$(config_t_get global default_egress_interface)
@@ -241,7 +247,7 @@ gen_bypasscore_config() {
 	[ -z "$node_socks_port" ] && node_socks_port=1070
 
 	json_init
-	# outbounds
+	# outbounds: direct / block / proxy (+ optional multi-WAN wan freedom outbounds)
 	json_add_array outbounds
 		json_add_object ''
 			json_add_string tag direct
@@ -251,6 +257,25 @@ gen_bypasscore_config() {
 			json_add_string tag block
 			json_add_string mode blackhole
 		json_close_object
+		# Multi-WAN: emit a bound freedom outbound for every named egress
+		# interface configured (global default + the active node's override).
+		# Mirrors BypassCore's wan1/wan2 binding model.
+		local _wan_emit _w
+		for _w in "$DEFAULT_EGRESS_IFACE" "$(get_effective_egress_iface)"; do
+			[ -z "$_w" ] && continue
+			case " $_wan_emit " in *" $_w "*) continue ;; esac
+			_wan_emit="$_wan_emit $_w"
+			local _lip
+			_lip=$(uci -q get "network.${_w}.ipaddr" 2>/dev/null)
+			json_add_object ''
+				json_add_string tag "$_w"
+				json_add_string mode freedom
+				json_add_object bind
+					json_add_string interface "$_w"
+					[ -n "$_lip" ] && json_add_string localIP "$_lip"
+				json_close_object
+			json_close_object
+		done
 		json_add_object ''
 			json_add_string tag proxy
 			json_add_string mode proxy
@@ -262,6 +287,36 @@ gen_bypasscore_config() {
 			json_close_object
 		json_close_object
 	json_close_array
+
+	# dns: BypassCore's split-DNS subsystem. Domestic upstream is selected by
+	# the split-domain list (default geosite:cn); everything else falls through
+	# to the remote upstream. Mirrors the "ChinaDNS-style" effect inside the
+	# routing engine, complementing ChinaDNS-NG's ipset-population role.
+	if [ -n "$BC_DOMESTIC_DNS" ] || [ -n "$BC_REMOTE_DNS" ]; then
+		json_add_object dns
+			json_add_array servers
+				if [ -n "$BC_DOMESTIC_DNS" ] && [ -n "$DNS_SPLIT_DOMAIN" ]; then
+					json_add_object ''
+						json_add_string address "$BC_DOMESTIC_DNS"
+						json_add_string tag domestic
+						json_add_array domains
+							local _sd
+							for _sd in $(echo "$DNS_SPLIT_DOMAIN" | tr '\n' ' '); do
+								[ -n "$_sd" ] && json_add_string '' "$_sd"
+							done
+						json_close_array
+					json_close_object
+				fi
+				if [ -n "$BC_REMOTE_DNS" ]; then
+					json_add_object ''
+						json_add_string address "$BC_REMOTE_DNS"
+						json_add_string tag remote
+					json_close_object
+				fi
+			json_close_array
+			json_add_string queryStrategy "$BC_QUERY_STRATEGY"
+		json_close_object
+	fi
 
 	# routing
 	json_add_object routing

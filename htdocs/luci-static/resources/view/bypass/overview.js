@@ -90,6 +90,38 @@ return view.extend({
 			rtResult
 		]));
 
+		/* ---- DNS resolve (BypassCore -resolve) ---- */
+		var dnsInput = E('input', {
+			type: 'text',
+			class: 'cbi-input-text',
+			placeholder: 'example.com',
+			style: 'width:340px'
+		});
+		var dnsResult = E('pre', { style: 'white-space:pre-wrap;min-height:40px;font-size:11px' }, _('Resolved IPs appear here.'));
+		container.appendChild(E('div', { class: 'cbi-section' }, [
+			E('h3', {}, _('DNS resolve (BypassCore)')),
+			E('p', {}, _('Resolve a domain via BypassCore\'s DNS subsystem (the split-DNS engine; ChinaDNS-NG remains the live resolver).')),
+			E('div', { style: 'margin-bottom:8px' }, [
+				dnsInput, ' ',
+				E('button', {
+					class: 'cbi-button cbi-button-apply',
+					click: function () {
+						var dom = (dnsInput.value || '').trim();
+						if (!dom) { ui.addNotification(null, E('p', {}, _('Enter a domain to resolve.'))); return; }
+						api('resolve', dom).then(function (r) {
+							while (dnsResult.firstChild) dnsResult.removeChild(dnsResult.firstChild);
+							if (r.code === 0) {
+								dnsResult.appendChild(document.createTextNode(r.raw || _('(no output)')));
+							} else {
+								dnsResult.appendChild(document.createTextNode(_('Error: ') + (r.error || r.raw || _('unknown'))));
+							}
+						});
+					}
+				}, _('Resolve'))
+			]),
+			dnsResult
+		]));
+
 		/* ---- Config preview (generated config.json) ---- */
 		var cfgPre = E('pre', { style: 'white-space:pre-wrap;max-height:420px;overflow:auto;font-size:11px' }, _('Click to generate/preview.'));
 		container.appendChild(E('div', { class: 'cbi-section' }, [

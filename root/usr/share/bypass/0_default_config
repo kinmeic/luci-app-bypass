@@ -33,6 +33,13 @@ config global_dns
 	option remote_dns_protocol 'udp'
 	option query_strategy 'UseIPv4'
 	option chinadns_listen_port '10553'
+	# BypassCore DNS subsystem (used by 'bypasscore -resolve' and the LuCI
+	# DNS resolve page; ChinaDNS-NG stays the live split resolver + ipset
+	# populator). Empty bc_domestic_dns disables the split and only the
+	# remote upstream is emitted.
+	option bc_domestic_dns 'https://223.5.5.5/dns-query'
+	option bc_remote_dns 'https://1.1.1.1/dns-query'
+	option dns_split_domain 'geosite:cn'
 
 config global_rules
 	option geosite_update '1'

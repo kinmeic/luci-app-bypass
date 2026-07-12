@@ -81,6 +81,28 @@ do_observe() {
 	emit
 }
 
+# resolve <domain> -> { code, raw }  (BypassCore -resolve, uses the dns section)
+do_resolve() {
+	local domain=$1
+	get_config
+	json_init
+	if [ -z "$domain" ]; then
+		json_add_int code -1
+		json_add_string error "missing domain"
+	elif ! is_linux_elf "$BYPASSCORE_FILE" 2>/dev/null; then
+		json_add_int code -1
+		json_add_string error "bypasscore unavailable (set bypasscore_file to a Linux ELF from https://github.com/kinmeic/BypassCore/releases)"
+	else
+		# Make sure the config (incl. dns section) is up to date for this query.
+		gen_bypasscore_config >/dev/null 2>&1
+		local raw
+		raw=$("$BYPASSCORE_FILE" -config "$BYPASSCORE_CFG" -resolve "$domain" 2>&1)
+		json_add_int code $?
+		json_add_string raw "$raw"
+	fi
+	emit
+}
+
 # node_tcping <node_id> -> { code, latency_ms, raw }
 do_node_tcping() {
 	local node_id=$1
@@ -179,7 +201,7 @@ do_interfaces() {
 }
 
 usage() {
-	echo "Usage: $0 {status|route_test|observe|node_tcping|config_preview|rule_update|log_tail|clear_log|interfaces} [args]" >&2
+	echo "Usage: $0 {status|route_test|observe|resolve|node_tcping|config_preview|rule_update|log_tail|clear_log|interfaces} [args]" >&2
 }
 
 main() {
@@ -189,6 +211,7 @@ main() {
 		status)         do_status ;;
 		route_test)     do_route_test "$1" ;;
 		observe)        do_observe ;;
+		resolve)        do_resolve "$1" ;;
 		node_tcping)    do_node_tcping "$1" ;;
 		config_preview) do_config_preview ;;
 		rule_update)    do_rule_update ;;
