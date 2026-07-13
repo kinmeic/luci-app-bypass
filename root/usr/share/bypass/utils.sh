@@ -17,8 +17,6 @@ TMP_ACL_PATH=${TMP_PATH}/acl
 TMP_BIN_PATH=${TMP_PATH}/bin
 TMP_IFACE_PATH=${TMP_PATH}/iface
 TMP_ROUTE_PATH=${TMP_PATH}/route
-TMP_SCRIPT_FUNC_PATH=${TMP_PATH}/script_func
-TMP_PROCESS_LIST_PATH=${TMP_PATH}/process_list
 BYPASSCORE_CFG=${TMP_PATH}/bypasscore/config.json
 
 . /lib/functions/network.sh
@@ -48,34 +46,15 @@ config_t_set() {
 	uci -q set "${CONFIG}.@${1}[${index}].${2}=${3}" 2>/dev/null
 }
 
-eval_set_val() {
-	for i in "$@"; do
-		for j in $i; do
-			eval "$j"
-		done
-	done
-}
-
-eval_unset_val() {
-	for i in "$@"; do
-		for j in $i; do
-			eval unset "$j"
-		done
-	done
-}
-
 # ------------------------------------------------------------------------------
 # State cache (persisted across sub-invocations in $TMP_PATH/var)
 # ------------------------------------------------------------------------------
 
-eval_cache_var() {
-	[ -s "$TMP_PATH/var" ] && eval "$(cat "$TMP_PATH/var")"
-}
-
 get_cache_var() {
 	local key="${1}"
+	case "$key" in ''|*[!A-Za-z0-9_]*) return 1 ;; esac
 	[ -n "${key}" ] && [ -s "$TMP_PATH/var" ] && {
-		echo "$(cat "$TMP_PATH/var" | grep "^${key}=" | awk -F '=' '{print $2}' | tail -n 1 | awk -F'"' '{print $2}')"
+		awk -v key="$key" -F'"' '$0 ~ ("^" key "=") { value=$2 } END { print value }' "$TMP_PATH/var"
 	}
 }
 
@@ -83,11 +62,12 @@ set_cache_var() {
 	local key="${1}"
 	shift 1
 	local val="$*"
+	case "$key" in ''|*[!A-Za-z0-9_]*) return 1 ;; esac
+	val=$(printf '%s' "$val" | tr -d '\r\n"')
 	[ -n "${key}" ] && [ -n "${val}" ] && {
 		[ ! -d "$TMP_PATH" ] && mkdir -p "$TMP_PATH"
 		sed -i "/${key}=/d" "$TMP_PATH/var" >/dev/null 2>&1
 		echo "${key}=\"${val}\"" >> "$TMP_PATH/var"
-		eval "${key}=\"${val}\""
 	}
 }
 
@@ -204,56 +184,29 @@ get_new_port() {
 }
 
 # ------------------------------------------------------------------------------
-# Process launch (symlink into $TMP_BIN_PATH so pgrep -f $TMP_BIN_PATH works),
-# with optional queueing for a deferred run_process_queue() barrier.
+# Process launch (symlink into $TMP_BIN_PATH so pgrep -f $TMP_BIN_PATH works).
 # ------------------------------------------------------------------------------
 
 ln_run() {
-	local queue_run=${1}
 	local file_func=${2}
 	local ln_name=${3}
 	local output=${4}
 	shift 4
 
 	if [ "${file_func%%/*}" != "${file_func}" ]; then
-		[ ! -L "${file_func}" ] && {
-			ln -s "${file_func}" "${TMP_BIN_PATH}/${ln_name}" >/dev/null 2>&1
+		case "$file_func" in
+		"${TMP_BIN_PATH}"/*) ;;
+		*)
+			mkdir -p "$TMP_BIN_PATH"
+			ln -sf "${file_func}" "${TMP_BIN_PATH}/${ln_name}" >/dev/null 2>&1
 			file_func="${TMP_BIN_PATH}/${ln_name}"
-		}
+			;;
+		esac
 		[ -x "${file_func}" ] || log 1 "%s is not executable: %s %s" "${file_func}" "${file_func}" "$*"
 	fi
 	[ -n "${file_func}" ] || log 1 "%s not found, cannot start." "${ln_name}"
 
-	[ "${queue_run}" = "1" ] && {
-		mkdir -p "$TMP_PROCESS_LIST_PATH"
-		process_count=$(ls "$TMP_PROCESS_LIST_PATH" 2>/dev/null | grep -v "^_" | wc -l)
-		process_count=$((process_count + 1))
-		echo "${file_func:-log 1 "${ln_name}"} $* >${output}" > "$TMP_PROCESS_LIST_PATH/$process_count"
-		return
-	}
-
 	${file_func:-log 1 "${ln_name}"} "$@" >"${output}" 2>&1 &
-
-	[ -n "$NO_REC_PROCESS" ] && return
-
-	process_count=$(ls "$TMP_SCRIPT_FUNC_PATH" 2>/dev/null | grep -v "^_" | wc -l)
-	process_count=$((process_count + 1))
-	echo "${file_func:-log 1 "${ln_name}"} $* >${output}" > "$TMP_SCRIPT_FUNC_PATH/$process_count"
-}
-
-run_process_queue() {
-	[ -d "${TMP_PROCESS_LIST_PATH}" ] && {
-		for filename in $(ls "${TMP_PROCESS_LIST_PATH}" 2>/dev/null); do
-			cmd=$(cat "${TMP_PROCESS_LIST_PATH}/${filename}")
-			cmd_check=$(echo "$cmd" | awk -F '>' '{print $1}')
-			icount=$(busybox pgrep -f "$(echo "$cmd_check")" 2>/dev/null | wc -l)
-			if [ "$icount" = 0 ]; then
-				eval "$(echo "nohup ${cmd} 2>&1 &")" >/dev/null 2>&1 &
-			fi
-			rm -rf "${TMP_PROCESS_LIST_PATH}/${filename}"
-		done
-	}
-	rm -rf "${TMP_PROCESS_LIST_PATH}"
 }
 
 kill_all() {
@@ -468,55 +421,102 @@ resolve_uplink_ips() {
 	[ -s "$TMP_PATH/uplink_ips" ] || log 1 "Could not resolve naive server address [%s] for egress set." "$server_host"
 }
 
-# get_egress_gateway <iface> -> echoes the IPv4 gateway (empty for p2p/tunnel)
-get_egress_gateway() {
+# Resolve an OpenWrt logical interface (wan/wan1/usbwan/...) to its current
+# L3 device, IPv4 address and gateway.  network.sh reads netifd's runtime state,
+# so DHCP, PPPoE and dynamically renamed devices work; UCI's static device/name
+# fields are deliberately not used here.
+get_egress_runtime() {
 	local iface=$1
-	local gateway
-	network_get_gateway gateway "$iface" 2>/dev/null
-	[ -n "$gateway" ] && { echo "$gateway"; return; }
-	gateway=$(ubus call "network.interface.$iface" status 2>/dev/null | jsonfilter -e '@.route[0].target' 2>/dev/null)
-	echo "$gateway"
+	EGRESS_DEVICE=""
+	EGRESS_GATEWAY=""
+	EGRESS_LOCAL_IP=""
+	network_flush_cache 2>/dev/null
+	network_is_up "$iface" 2>/dev/null || return 1
+	network_get_device EGRESS_DEVICE "$iface" 2>/dev/null
+	network_get_gateway EGRESS_GATEWAY "$iface" 2>/dev/null
+	network_get_ipaddr EGRESS_LOCAL_IP "$iface" 2>/dev/null
+	[ -n "$EGRESS_DEVICE" ]
 }
 
-# setup_egress_routing <iface> <fwmark> <table>
+# setup_egress_routing <logical_iface> <table> <rule_priority>
+#
+# Only the selected Naive server destinations are sent to the dedicated table.
+# Destination rules avoid overwriting packet marks owned by mwan3/PBR and are a
+# better fit than reimplementing mwan3 for this one narrowly scoped tunnel.
 setup_egress_routing() {
-	local iface=$1 fwmark=$2 table=$3
+	local iface=$1 table=$2 priority=$3
 	[ -z "$iface" ] && return 0
-	# Routing table entry: default via <gw> dev <iface> (or dev-only for tunnels)
-	local gateway
-	gateway=$(get_egress_gateway "$iface")
-	local dev_route="dev $iface"
-	if [ -n "$gateway" ]; then
-		ip route replace default via "$gateway" dev "$iface" table "$table" 2>/dev/null \
-			|| ip route replace default dev "$iface" table "$table" 2>/dev/null
-	else
-		ip route replace default dev "$iface" table "$table" 2>/dev/null
+	get_egress_runtime "$iface" || {
+		log 0 "Configured egress interface [%s] is down or has no L3 device." "$iface"
+		return 1
+	}
+	[ -s "$TMP_PATH/uplink_ips" ] || {
+		log 0 "No IPv4 address resolved for the selected Naive server; cannot apply egress interface [%s]." "$iface"
+		return 1
+	}
+
+	teardown_egress_routing
+	local existing_default
+	existing_default=$(ip -o route show table "$table" default 2>/dev/null)
+	if [ -n "$existing_default" ] && ! echo "$existing_default" | grep -q 'proto 99'; then
+		log 0 "Egress route table [%s] already has a foreign default route; choose another table." "$table"
+		return 1
 	fi
-	# Policy rule: marked packets use our table.
-	ip rule add fwmark "$fwmark" lookup "$table" 2>/dev/null || ip rule replace fwmark "$fwmark" lookup "$table"
-	log 0 "Egress routing: naive -> %s (gw=%s, fwmark=%s, table=%s)." "$iface" "${gateway:-p2p}" "$fwmark" "$table"
+	if [ -n "$EGRESS_GATEWAY" ]; then
+		ip route replace default via "$EGRESS_GATEWAY" dev "$EGRESS_DEVICE" onlink proto 99 table "$table" 2>/dev/null \
+			|| ip route replace default via "$EGRESS_GATEWAY" dev "$EGRESS_DEVICE" proto 99 table "$table" 2>/dev/null \
+			|| return 1
+	else
+		ip route replace default dev "$EGRESS_DEVICE" proto 99 table "$table" 2>/dev/null || return 1
+	fi
+
+	local ip installed=0
+	: > "$TMP_PATH/egress_rule_ips"
+	while read -r ip; do
+		[ -n "$ip" ] || continue
+		while ip rule del priority "$priority" to "$ip/32" lookup "$table" 2>/dev/null; do :; done
+		if ip rule add priority "$priority" to "$ip/32" lookup "$table" 2>/dev/null; then
+			echo "$ip" >> "$TMP_PATH/egress_rule_ips"
+			installed=$((installed + 1))
+		fi
+	done < "$TMP_PATH/uplink_ips"
+	[ "$installed" -gt 0 ] || {
+		ip route flush table "$table" proto 99 2>/dev/null
+		return 1
+	}
+
+	log 0 "Egress routing: Naive server -> %s/%s (gw=%s, table=%s, priority=%s, destinations=%s)." \
+		"$iface" "$EGRESS_DEVICE" "${EGRESS_GATEWAY:-p2p}" "$table" "$priority" "$installed"
 	set_cache_var EGRESS_IFACE "$iface"
-	set_cache_var EGRESS_FWMARK "$fwmark"
 	set_cache_var EGRESS_TABLE "$table"
+	set_cache_var EGRESS_RULE_PRIORITY "$priority"
 }
 
 teardown_egress_routing() {
-	local iface fwmark table
+	local iface table priority ip
 	iface=$(get_cache_var EGRESS_IFACE)
-	fwmark=$(get_cache_var EGRESS_FWMARK)
 	table=$(get_cache_var EGRESS_TABLE)
-	[ -n "$table" ] && ip route flush table "$table" 2>/dev/null
-	[ -n "$fwmark" ] && ip rule del fwmark "$fwmark" 2>/dev/null
+	priority=$(get_cache_var EGRESS_RULE_PRIORITY)
+	[ -z "$priority" ] && priority=900
+	if [ -n "$table" ] && [ -s "$TMP_PATH/egress_rule_ips" ]; then
+		while read -r ip; do
+			[ -n "$ip" ] || continue
+			while ip rule del priority "$priority" to "$ip/32" lookup "$table" 2>/dev/null; do :; done
+		done < "$TMP_PATH/egress_rule_ips"
+	fi
+	[ -n "$table" ] && ip route flush table "$table" proto 99 2>/dev/null
 	[ -n "$iface" ] && log 0 "Egress routing torn down (iface=%s)." "$iface"
 }
 
-# refresh_uplink_ips <node_id> -> re-resolve + signal the tables backend to
-# repopulate its bypass_uplink set. The tables backend's refresh_uplink() (if
-# loaded) does the set repopulation; this just refreshes the IP file.
+# refresh_uplink_ips <node_id> -> re-resolve and rebuild destination rules.
 refresh_uplink_ips() {
 	local node_id=$1
 	resolve_uplink_ips "$node_id"
-	# If a tables backend is sourced, let it repopulate its set.
-	type refresh_uplink >/dev/null 2>&1 && refresh_uplink
-	return 0
+	local iface table priority
+	iface=$(config_n_get "$node_id" egress_interface)
+	[ -n "$iface" ] || iface=$(config_t_get global default_egress_interface)
+	[ -n "$iface" ] || { teardown_egress_routing; return 0; }
+	table=$(config_t_get global naive_egress_table 20200)
+	priority=$(config_t_get global naive_egress_rule_priority 900)
+	setup_egress_routing "$iface" "$table" "$priority"
 }

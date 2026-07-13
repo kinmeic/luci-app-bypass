@@ -14,10 +14,9 @@ return view.extend({
 	},
 
 	render: function () {
-		var sid = (window.location.search || '').match(/(?:^|&|;)rule=([^&;]*)/);
-		sid = sid ? decodeURIComponent(sid[1]) : null;
+		var sid = new URLSearchParams(window.location.search).get('rule');
 
-		if (!sid || !uci.get('bypass', sid)) {
+		if (!sid || uci.get('bypass', sid, '.type') !== 'shunt_rules') {
 			// No valid section — bounce back to the list.
 			window.location.assign(L.url('admin/services/bypass/rule_manage'));
 			return E('div', { class: 'cbi-map' }, [

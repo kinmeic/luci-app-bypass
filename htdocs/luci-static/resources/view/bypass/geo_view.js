@@ -35,12 +35,14 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, _('Please enter query content!')));
 				return;
 			}
-			btn.disabled = true;
+			lookupBtn.disabled = true;
+			extractBtn.disabled = true;
 			var oldLabel = btn.textContent;
 			btn.textContent = _('Querying…');
 			result.value = '';
 			api('geo_view', action, value).then(function (r) {
-				btn.disabled = false;
+				lookupBtn.disabled = false;
+				extractBtn.disabled = false;
 				btn.textContent = oldLabel;
 				if (r.code === 0) {
 					result.value = r.output || _('No results were found!');
@@ -85,35 +87,31 @@ return view.extend({
 		bindEnter(extractInput, extractBtn, 'extract');
 
 		return E('div', { class: 'cbi-map', style: 'margin-bottom:2rem' }, [
-			E('h2', { name: 'content' }, _('Geo View')),
-			E('div', { class: 'cbi-section-descr' }, [
-				E('ul', { style: 'margin:0;padding-left:1.2em' }, [
+			E('div', { class: 'cbi-value' }, [
+				E('ul', {}, [
+					E('strong', { style: 'color:var(--primary);display:inline-block;margin-bottom:.5rem' }, _('Tips:')),
 					E('li', {}, _('By entering a domain or IP, you can query the Geo rule list they belong to.')),
 					E('li', {}, _('By entering a GeoIP or Geosite, you can extract the domains/IPs they contain.')),
 					E('li', {}, _('Use the GeoIP/Geosite query function to verify if the entered Geo rules are correct.'))
 				])
 			]),
 
-			/* Domain/IP Query */
-			E('div', { class: 'cbi-section', style: 'margin-top:1rem' }, [
-				E('h3', {}, _('Domain/IP Query')),
-				E('div', { style: 'font-size:12px;color:#8898aa;margin-bottom:8px' },
-					_('Enter a domain or IP to query the Geo rule list they belong to.')),
-				E('div', { style: 'display:flex;gap:8px;align-items:center' }, [
-					lookupInput, lookupBtn
-				]),
-				result
+			E('div', { class: 'cbi-value' }, [
+				E('label', { class: 'cbi-value-title', for: 'geoview.lookup' }, _('Domain/IP Query')),
+				E('div', { class: 'cbi-value-field' }, [
+					E('div', { style: 'display:flex;gap:2px;align-items:center;white-space:nowrap' }, [lookupInput, lookupBtn]),
+					E('div', { class: 'cbi-value-description' }, _('Enter a domain or IP to query the Geo rule list they belong to.'))
+				])
 			]),
 
-			/* GeoIP/Geosite Query */
-			E('div', { class: 'cbi-section' }, [
-				E('h3', {}, _('GeoIP/Geosite Query')),
-				E('div', { style: 'font-size:12px;color:#8898aa;margin-bottom:8px' },
-					_('Enter a GeoIP or Geosite to extract the domains/IPs they contain. Format: geoip:cn or geosite:gfw')),
-				E('div', { style: 'display:flex;gap:8px;align-items:center' }, [
-					extractInput, extractBtn
+			E('div', { class: 'cbi-value' }, [
+				E('label', { class: 'cbi-value-title', for: 'geoview.extract' }, _('GeoIP/Geosite Query')),
+				E('div', { class: 'cbi-value-field' }, [
+					E('div', { style: 'display:flex;gap:2px;align-items:center;white-space:nowrap' }, [extractInput, extractBtn]),
+					E('div', { class: 'cbi-value-description' }, _('Enter a GeoIP or Geosite to extract the domains/IPs they contain. Format: geoip:cn or geosite:gfw'))
 				])
-			])
+			]),
+			E('div', { class: 'cbi-value' }, result)
 		]);
 	},
 

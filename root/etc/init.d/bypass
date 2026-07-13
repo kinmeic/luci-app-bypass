@@ -11,25 +11,11 @@ LOCK_FILE=${LOCK_FILE_DIR}/${CONFIG}.lock
 set_lock() {
 	[ ! -d "$LOCK_FILE_DIR" ] && mkdir -p "$LOCK_FILE_DIR"
 	exec 999>"$LOCK_FILE"
-	flock -xn 999
+	flock -x -w 10 999
 }
 
 unset_lock() {
 	flock -u 999 2>/dev/null
-	rm -rf "$LOCK_FILE"
-}
-
-unlock() {
-	failcount=1
-	while [ "$failcount" -le 10 ]; do
-		if [ -f "$LOCK_FILE" ]; then
-			failcount=$((failcount + 1))
-			sleep 1
-			[ "$failcount" -ge 10 ] && unset_lock
-		else
-			break
-		fi
-	done
 }
 
 boot_func() {
@@ -48,26 +34,26 @@ boot() {
 }
 
 start() {
-	set_lock
-	[ $? = 1 ] && { log 0 "Already running, exit."; exit 0; }
+	set_lock || { log 0 "Could not acquire service lock, exit."; exit 1; }
 	$APP_FILE start
+	local rc=$?
 	unset_lock
+	return $rc
 }
 
 stop() {
-	unlock
-	set_lock
-	[ $? = 1 ] && { log 0 "Stopping (timed out), exit."; exit 0; }
+	set_lock || { log 0 "Could not acquire service lock for stop, exit."; exit 1; }
 	$APP_FILE stop
 	unset_lock
 }
 
 restart() {
-	set_lock
-	[ $? = 1 ] && { log 0 "Already running, exit."; exit 0; }
+	set_lock || { log 0 "Could not acquire service lock for restart, exit."; exit 1; }
 	$APP_FILE stop
 	$APP_FILE start $1
+	local rc=$?
 	unset_lock
+	return $rc
 }
 
 reload() {

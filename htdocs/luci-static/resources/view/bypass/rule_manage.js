@@ -12,19 +12,32 @@
 //   2. "Shunt Rule" table section (shunt_rules): list-first — Remarks +
 //      Summary columns; clicking a row opens the rule editor.
 
+function api(/* action, ...args */) {
+	return fs.exec('/usr/share/bypass/api.sh', Array.prototype.slice.call(arguments)).then(function (res) {
+		try { return JSON.parse(res.stdout || '{}'); }
+		catch (e) { return { code: -1, error: 'bad JSON: ' + (res.stdout || '') }; }
+	}).catch(function (e) { return { code: -1, error: String(e) }; });
+}
+
+function validateTime(_sid, value) {
+	var match = /^(\d{1,2}):(\d{2})$/.exec(value || '');
+	return match && +match[1] <= 23 && +match[2] <= 59
+		? true : _('Enter a valid time in HH:MM format.');
+}
+
 return view.extend({
 	load: function () {
-		return Promise.all([
-			uci.load('bypass'),
-			fs.stat('/usr/share/v2ray/geoip.dat').catch(function () { return {}; }),
-			fs.stat('/usr/share/v2ray/geosite.dat').catch(function () { return {}; })
-		]).then(function (res) {
-			return { geoip: res[1], geosite: res[2] };
+		return Promise.all([uci.load('bypass'), api('rule_status')]).then(function (res) {
+			var status = res[1] || {};
+			return {
+				geoip: { size: status.geoip_size, mtime: status.geoip_mtime },
+				geosite: { size: status.geosite_size, mtime: status.geosite_mtime }
+			};
 		});
 	},
 
 	render: function (stats) {
-		var m = new form.Map('bypass', _('Rule Manage'));
+		var m = new form.Map('bypass');
 
 		/* ---- Section 1: global_rules ---- */
 		var gs = m.section(form.TypedSection, 'global_rules', _('Rule status'));
@@ -37,23 +50,24 @@ return view.extend({
 		o.value('https://gh-proxy.org/https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat', _('Loyalsoldier/geoip (gh-proxy)'));
 		o.value('https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geoip.dat', _('Loyalsoldier/geoip (CDN)'));
 		o.value('https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.dat', _('MetaCubeX/geoip'));
+		o.value('https://gh-proxy.org/https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.dat', _('MetaCubeX/geoip (gh-proxy)'));
+		o.value('https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat', _('MetaCubeX/geoip (CDN)'));
+		o.default = 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat';
 
 		o = gs.option(form.Value, 'geosite_url', _('Geosite Update URL'));
 		o.value('https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat', _('Loyalsoldier/geosite'));
 		o.value('https://gh-proxy.org/https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat', _('Loyalsoldier/geosite (gh-proxy)'));
 		o.value('https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/geosite.dat', _('Loyalsoldier/geosite (CDN)'));
 		o.value('https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat', _('MetaCubeX/geosite'));
+		o.value('https://gh-proxy.org/https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat', _('MetaCubeX/geosite (gh-proxy)'));
+		o.value('https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat', _('MetaCubeX/geosite (CDN)'));
+		o.default = 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat';
 
 		o = gs.option(form.Value, 'v2ray_location_asset', _('Location of Geo rule files'),
 			_('Directory where geoip.dat and geosite.dat live.'));
 		o.default = '/usr/share/v2ray/';
 		o.placeholder = o.default;
 		o.rmempty = false;
-
-		o = gs.option(form.Flag, 'auto_update', _('Enable auto update rules'),
-			_('Enable scheduled automatic update of GeoIP/Geosite rule files.'));
-		o.rmempty = false;
-		o.default = '0';
 
 		o = gs.option(form.ListValue, 'update_week_mode', _('Auto Update Mode'));
 		o.value('', _('Disable'));
@@ -66,8 +80,6 @@ return view.extend({
 		o.value('5', _('Every Friday'));
 		o.value('6', _('Every Saturday'));
 		o.value('0', _('Every Sunday'));
-		o.depends('auto_update', '1');
-
 		o = gs.option(form.Value, 'update_time_mode', _('Update Time'));
 		o.value('0:00');
 		for (var t = 0; t <= 23; t++) {
@@ -76,7 +88,7 @@ return view.extend({
 			else o.value(t + ':00');
 		}
 		o.default = '0:00';
-		o.depends('auto_update', '1');
+		o.validate = validateTime;
 		o.depends('update_week_mode', '0');
 		o.depends('update_week_mode', '1');
 		o.depends('update_week_mode', '2');
@@ -89,13 +101,7 @@ return view.extend({
 		o = gs.option(form.ListValue, 'update_interval_mode', _('Update Interval(hour)'));
 		for (var h = 1; h <= 24; h++) o.value(String(h), h + ' ' + _('hour'));
 		o.default = '2';
-		o.depends('auto_update', '1');
 		o.depends('update_week_mode', '8');
-
-		o = gs.option(form.Flag, 'geoip_update', _('Update GeoIP'));
-		o.rmempty = false;
-		o = gs.option(form.Flag, 'geosite_update', _('Update Geosite'));
-		o.rmempty = false;
 
 		// File status + manual update button.
 		var statLine = E('div', {}, [
@@ -114,10 +120,11 @@ return view.extend({
 						var btn = ev.target;
 						btn.disabled = true;
 						btn.textContent = _('Updating…');
-						fs.exec('/usr/share/bypass/api.sh', ['rule_update']).then(function (res) {
+						api('rule_update').then(function (res) {
 							btn.disabled = false;
 							btn.textContent = _('Manually update');
-							ui.addNotification(null, E('p', {}, (res.stdout || '').trim() || _('Done')));
+							var message = res.code === 0 ? (res.msg || _('Done')) : (res.error || res.msg || _('Update failed'));
+							ui.addNotification(null, E('p', {}, message), res.code !== 0 ? 'error' : 'info');
 						});
 					}
 				}, _('Manually update'))
@@ -136,8 +143,27 @@ return view.extend({
 		ss.addremove = true;
 		ss.anonymous = false;
 		ss.sortable = true;
-		ss.extedit = function (sid) {
-			return L.url('admin/services/bypass/rule_edit') + '?rule=' + encodeURIComponent(sid);
+		ss.extedit = L.url('admin/services/bypass/rule_edit') + '?rule=%s';
+		ss.handleAdd = function (_ev, name) {
+			var sid = uci.add('bypass', 'shunt_rules', name);
+			uci.set('bypass', sid, 'remarks', name);
+			uci.set('bypass', sid, 'network', 'tcp,udp');
+			uci.set('bypass', sid, 'outbound', '_direct');
+			return uci.save().then(function () {
+				return uci.apply();
+			}).then(function () {
+				window.location.assign(L.url('admin/services/bypass/rule_edit') + '?rule=' + encodeURIComponent(sid));
+			});
+		};
+		ss.handleRemove = function (sid) {
+			if (!confirm(_('Delete rule: %s ?').format(uci.get('bypass', sid, 'remarks') || sid)))
+				return Promise.resolve();
+			uci.remove('bypass', sid);
+			return uci.save().then(function () {
+				return uci.apply();
+			}).then(function () {
+				window.location.reload();
+			});
 		};
 
 		o = ss.option(form.DummyValue, 'remarks', _('Remarks'));

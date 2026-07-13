@@ -4,6 +4,7 @@
 'require uci';
 'require fs';
 'require ui';
+'require poll';
 
 // Basic Settings — merged landing page, passwall2-style tabs:
 //   Main / Shunt Rule / DNS / Log / Maintain
@@ -11,9 +12,8 @@
 // bar. Options that physically reside in other UCI sections (global_delay,
 // global_rules, global_dns) are redirected via the crossSection() helper which
 // overrides cfgvalue/write/remove to target the correct UCI section.
-// The shunt_rules TableSection renders as a standalone section below the form
-// (TableSection does not support tabs — passwall2 does the same for its socks
-// table).
+// Rule rows are managed on the dedicated Rule Manage page; this view only
+// contains the global shunt-engine options so every field stays in its tab.
 
 var COL = { green: '#2dce89', red: '#fb6340', yellow: '#fb9a05' };
 
@@ -55,7 +55,7 @@ function crossSection(o, uciSection) {
 		uci.set('bypass', uciSection, o.option, value);
 	};
 	o.remove = function () {
-		uci.delete('bypass', uciSection, o.option);
+		uci.unset('bypass', uciSection, o.option);
 	};
 	return o;
 }
@@ -135,12 +135,12 @@ return view.extend({
 			core.card, baidu.card, google.card, github.card
 		]);
 
-		var pollHandle = setInterval(function () {
-			api('status').then(function (s) {
+		poll.add(function () {
+			return api('status').then(function (s) {
 				core.span.className = s.running ? 'green' : 'red';
 				core.span.textContent = s.running ? _('RUNNING') : _('NOT RUNNING');
 			});
-		}, 5000);
+		}, 5);
 
 		/* ---- bypass badge row ---- */
 		var badgeRow = E('div', { class: 'bypass-badge-row' }, [
@@ -153,8 +153,7 @@ return view.extend({
 		]);
 
 		/* ---- The form.Map (single tabbed NamedSection + table section) ---- */
-		var m = new form.Map('bypass', _('Bypass'),
-			_('naiveproxy + ChinaDNS-ng + BypassCore split proxy.'));
+		var m = new form.Map('bypass');
 
 		var o;
 
@@ -179,9 +178,6 @@ return view.extend({
 			o.value(sec['.name'], sec.remarks ? sec.remarks + ' (' + sec['.name'] + ')' : sec['.name']);
 		});
 
-		o = s.taboption('Main', form.Flag, 'localhost_proxy', _('Localhost Proxy'));
-		o.default = '1';
-		o.rmempty = false;
 		o = s.taboption('Main', form.Flag, 'client_proxy', _('Client Proxy'));
 		o.default = '1';
 		o.rmempty = false;
@@ -204,14 +200,16 @@ return view.extend({
 		o.placeholder = '/usr/bin/chinadns-ng';
 
 		o = s.taboption('Main', form.ListValue, 'default_egress_interface', _('Default Egress Interface'));
-		o.description = _('Steer the naive → server tunnel out of this interface. Empty = system default route.');
+		o.description = _('Steer the NaiveProxy server connection out of this OpenWrt network (wan/wan1/usbwan). A node-specific setting overrides this value. Empty = system default route.');
 		o.value('', _('(system default route)'));
 		ifaces.forEach(function (i) { o.value(i, i); });
-		o = s.taboption('Main', form.Value, 'naive_egress_fwmark', _('Egress fwmark'));
-		o.placeholder = '0x2';
 		o = s.taboption('Main', form.Value, 'naive_egress_table', _('Egress route table'));
 		o.datatype = 'uinteger';
-		o.placeholder = '200';
+		o.placeholder = '20200';
+		o = s.taboption('Main', form.Value, 'naive_egress_rule_priority', _('Egress rule priority'));
+		o.description = _('Priority of the destination policy rules. The default 900 runs before Passwall2/mwan3-style marked rules without modifying their packet marks.');
+		o.datatype = 'uinteger';
+		o.placeholder = '900';
 
 		/* ----- Main tab (start_delay from 'global_delay') ----- */
 		o = s.taboption('Main', form.Value, 'start_delay', _('Start Delay (seconds)'),
@@ -230,26 +228,8 @@ return view.extend({
 		o.default = 'IpOnDemand';
 		crossSection(o, 'global_rules');
 
-		o = s.taboption('Shunt Rule', form.ListValue, 'domainMatcher', _('Domain matcher'),
-			_('Xray-only option; shown for parity. BypassCore ignores this.'));
-		o.value('hybrid', 'hybrid');
-		o.value('linear', 'linear');
-		crossSection(o, 'global_rules');
-
-		o = s.taboption('Shunt Rule', form.Flag, 'write_ipset_direct', _('Direct DNS result write to IPSet'),
-			_('Match direct domain rules into IP and connect directly (not entering the core).'));
-		o.default = '1';
-		o.rmempty = false;
-		crossSection(o, 'global_rules');
-
-		o = s.taboption('Shunt Rule', form.Flag, 'enable_geoview_ip', _('Enable GeoIP Data Parsing'),
-			_('Analyze and preload GeoIP data to enhance shunt performance.'));
-		o.default = '1';
-		o.rmempty = false;
-		crossSection(o, 'global_rules');
-
 		o = s.taboption('Shunt Rule', form.ListValue, 'direct_egress_interface', _('Default Direct Interface'),
-			_('Bind the direct outbound to this network interface so direct shunt traffic egresses here. Empty = system default route.'));
+			_('Bind BypassCore direct traffic to this OpenWrt network. The current runtime L3 device and address are resolved through netifd. Empty = system default route.'));
 		o.value('', _('(system default route)'));
 		ifaces.forEach(function (i) { o.value(i, i); });
 		crossSection(o, 'global_rules');
@@ -266,7 +246,7 @@ return view.extend({
 		o.value('udp', _('UDP'));
 		o.value('tcp', _('TCP'));
 		o.value('tls', _('TLS (DoT)'));
-		o.value('https', _('HTTPS (DoH)'));
+		o.default = 'tcp';
 		crossSection(o, 'global_dns');
 		o = s.taboption('DNS', form.ListValue, 'query_strategy', _('Query strategy'));
 		o.value('UseIPv4', _('IPv4 only'));
@@ -290,7 +270,6 @@ return view.extend({
 		o = s.taboption('DNS', form.Flag, 'dns_redirect', _('Redirect dnsmasq to ChinaDNS-NG'),
 			_('Force special DNS server to need proxy devices.'));
 		o.rmempty = false;
-		crossSection(o, 'global_dns');
 
 		/* ----- Log tab (options from 'global') ----- */
 		o = s.taboption('Log', form.Flag, 'log_node', _('Enable Node Log'));
@@ -390,30 +369,15 @@ return view.extend({
 			]);
 		};
 
-		/* ===== Shunt Rule List (standalone TableSection, no tabs) ===== */
-		var sShunt = m.section(form.TableSection, 'shunt_rules', _('Shunt Rule List'),
-			E('span', { style: 'color: red' },
-				_('Note the priority: the higher the order, the higher the priority.')));
-		sShunt.addremove = true;
-		sShunt.anonymous = false;
-		sShunt.sortable = true;
-		sShunt.extedit = function (sid) {
-			return L.url('admin/services/bypass/rule_edit') + '?rule=' + encodeURIComponent(sid);
-		};
-		o = sShunt.option(form.DummyValue, 'remarks', _('Remarks'));
-		o = sShunt.option(form.ListValue, 'outbound', _('Outbound'));
-		o.value('_direct', _('Direct'));
-		o.value('_proxy', _('Proxy (naive)'));
-		o.value('_block', _('Block'));
-
 		/* ---- Assemble ---- */
-		var container = E('div', { class: 'cbi-map' }, [
-			E('h2', { name: 'content' }, _('Bypass')),
+		var container = E('div', { class: 'bypass-page' }, [
 			statusStrip,
 			badgeRow
 		]);
-		container.appendChild(m.render());
-		return container;
+		return m.render().then(function (mapNode) {
+			container.appendChild(mapNode);
+			return container;
+		});
 	}
 });
 

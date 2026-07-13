@@ -1,9 +1,8 @@
 #!/bin/sh
 # hotplug.d/iface/98-bypass
 #
-# On default-route interface changes, refresh the WAN sets + uplink IPs (cheap);
-# on a fresh ifup of the default route (or the configured egress interface),
-# do a full restart so the policy route picks up the new gateway.
+# Keep firewall WAN sets fresh. Changes to the explicitly selected Naive egress
+# interface require a restart so netifd's new L3 device/gateway is applied.
 
 [ -f /var/lock/bypass_ready.lock ] || exit 0
 
@@ -31,18 +30,25 @@ is_default_route_iface() {
 
 case "$ACTION" in
 	ifupdate)
-		# Cheap refresh of WAN IP set + uplink set.
-		use_tables=$(get_cache_var USE_TABLES)
-		[ -n "$use_tables" ] && [ -x "$APP_PATH/${use_tables}.sh" ] && \
-			"$APP_PATH/${use_tables}.sh" update_wan_sets 2>/dev/null
+		if [ -n "$egress_iface" ] && [ "$INTERFACE" = "$egress_iface" ]; then
+			( /etc/init.d/bypass restart ) >/dev/null 2>&1 &
+		else
+			use_tables=$(get_cache_var USE_TABLES)
+			[ -n "$use_tables" ] && [ -x "$APP_PATH/${use_tables}.sh" ] && \
+				"$APP_PATH/${use_tables}.sh" update_wan_sets 2>/dev/null
+		fi
 		;;
 	ifup)
-		if is_default_route_iface || [ "$DEVICE" = "$egress_iface" ]; then
+		if is_default_route_iface || [ "$INTERFACE" = "$egress_iface" ]; then
 			( /etc/init.d/bypass restart ) >/dev/null 2>&1 &
 		fi
+		;;
+	ifdown)
+		# A selected WAN disappearing must remove its stale route immediately.
+		[ -n "$egress_iface" ] && [ "$INTERFACE" = "$egress_iface" ] && \
+			( /etc/init.d/bypass restart ) >/dev/null 2>&1 &
 		;;
 esac
 
 flock -u 9
-rm -f "$LOCK"
 exit 0

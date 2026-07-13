@@ -1,81 +1,133 @@
 msgid ""
 msgstr ""
-"Content-Type: text/plain; charset=UTF-8\n"
 "Project-Id-Version: luci-app-bypass\n"
-"PO-Revision-Date: 2026-07-12\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-13 22:59+0800\n"
+"PO-Revision-Date: 2026-07-13\n"
 "Last-Translator: eugene\n"
+"Language-Team: Chinese (Simplified)\n"
 "Language: zh-cn\n"
 "MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Bypass"
-msgstr "Bypass 分流"
+msgid "Check…"
+msgstr "检测中…"
 
-msgid "naiveproxy + ChinaDNS-ng + BypassCore split proxy."
-msgstr "naiveproxy + ChinaDNS-ng + BypassCore 分流代理。"
+msgid "Working…"
+msgstr "连接正常…"
 
-msgid "Overview"
-msgstr "概览"
+msgid "Problem detected!"
+msgstr "连接失败"
 
-msgid "Basic Settings"
-msgstr "基本设置"
+msgid "Core"
+msgstr "核心"
 
-msgid "Forwarding"
-msgstr "转发"
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "Baidu"
+msgstr "百度"
+
+msgid "Touch Check"
+msgstr "点我检测"
+
+msgid "Google"
+msgstr "Google"
+
+msgid "GitHub"
+msgstr "GitHub"
+
+msgid "naive"
+msgstr "naive"
+
+msgid "present"
+msgstr "已安装"
+
+msgid "missing"
+msgstr "缺失"
+
+msgid "chinadns-ng"
+msgstr "chinadns-ng"
+
+msgid "bypasscore"
+msgstr "bypasscore"
+
+msgid "bypasscore ELF"
+msgstr "bypasscore ELF"
+
+msgid "Linux ELF"
+msgstr "Linux ELF"
+
+msgid "not Linux ELF"
+msgstr "非 Linux ELF"
+
+msgid "Firewall"
+msgstr "防火墙"
+
+msgid "Egress"
+msgstr "出口"
+
+msgid "default"
+msgstr "默认"
+
+msgid "Main"
+msgstr "主要"
+
+msgid "Shunt Rule"
+msgstr "分流规则"
 
 msgid "DNS"
 msgstr "DNS"
 
-msgid "Node List"
-msgstr "节点列表"
-
-msgid "Node Config"
-msgstr "节点配置"
-
-msgid "Shunt Rules"
-msgstr "分流规则"
-
-msgid "Rule Update"
-msgstr "规则更新"
-
 msgid "Log"
 msgstr "日志"
 
-msgid "Enable"
-msgstr "启用"
+msgid "Maintain"
+msgstr "维护"
+
+msgid "Main switch"
+msgstr "主开关"
 
 msgid "Node"
 msgstr "节点"
 
-msgid "The NaiveProxy node used as the global transparent proxy."
-msgstr "用作全局透明代理的 NaiveProxy 节点。"
+msgid "Close"
+msgstr "关闭"
 
-msgid "SOCKS Port"
-msgstr "SOCKS 端口"
+msgid "Localhost Proxy"
+msgstr "路由器本机代理"
 
-msgid "Proxy localhost"
-msgstr "代理本机"
+msgid "Client Proxy"
+msgstr "客户端代理"
 
-msgid "Proxy router clients"
-msgstr "代理路由器客户端"
+msgid "Traffic routing mode"
+msgstr "流量分流模式"
 
-msgid "Log Level"
-msgstr "日志级别"
+msgid "NaiveProxy carrier (Geo DNS split only)"
+msgstr "NaiveProxy 承载（仅 Geo DNS 分流）"
 
-msgid "Debug"
-msgstr "调试"
+msgid "BypassCore routing engine"
+msgstr "BypassCore 分流引擎"
 
-msgid "Info"
-msgstr "信息"
+msgid ""
+"Select BypassCore mode when shunt rules, blocking rules, or UDP TPROXY must "
+"be enforced on live traffic. It requires a compatible BypassCore binary."
+msgstr ""
+"需要让自定义分流规则、阻断规则或 UDP TPROXY 对实时流量生效时，请选择 "
+"BypassCore 模式；该模式需要兼容的 BypassCore 二进制。"
 
-msgid "Warning"
-msgstr "警告"
+msgid "Node Socks Listen Port"
+msgstr "节点 SOCKS 监听端口"
 
-msgid "Error"
-msgstr "错误"
+msgid "Node Socks Bind Local"
+msgstr "节点 SOCKS 仅绑定本机"
 
-msgid "Redirect dnsmasq to ChinaDNS-NG"
-msgstr "将 dnsmasq 重定向到 ChinaDNS-NG"
+msgid "When selected, it can only be accessed localhost."
+msgstr "当勾选时，只能本机访问。"
 
 msgid "BypassCore binary"
 msgstr "BypassCore 二进制"
@@ -89,86 +141,71 @@ msgstr "chinadns-ng 二进制"
 msgid "Default Egress Interface"
 msgstr "默认出口接口"
 
-msgid "Steer the naive -> server tunnel connection out of this interface (dest-IP fwmark policy routing). Leave empty to use the system default route. Per-node egress_interface overrides this."
-msgstr "把 naive → 服务器 的隧道连接从该接口发出（基于目的 IP 的 fwmark 策略路由）。留空则使用系统默认路由。每个节点的 egress_interface 可覆盖此项。"
+msgid ""
+"Steer the naive → server tunnel out of this interface. Empty = system "
+"default route."
+msgstr "将 naive → 服务器隧道从此接口发出；留空则使用系统默认路由。"
+
+msgid "(system default route)"
+msgstr "（系统默认路由）"
 
 msgid "Egress fwmark"
 msgstr "出口 fwmark"
 
-msgid "Firewall mark used to steer naive traffic. Advanced."
-msgstr "用于引导 naive 流量的防火墙标记（高级）。"
+msgid "Enter a decimal or hexadecimal mark, for example 2 or 0x2."
+msgstr "请输入十进制或十六进制标记，例如 2 或 0x2。"
 
 msgid "Egress route table"
 msgstr "出口路由表"
 
-msgid "Routing table id used for the egress policy rule. Advanced."
-msgstr "出口策略规则使用的路由表 ID（高级）。"
+msgid "Egress rule priority"
+msgstr "出口规则优先级"
+
+msgid "Priority of the destination policy rules. The default 900 runs before Passwall2/mwan3-style marked rules without modifying their packet marks."
+msgstr "目标策略规则的优先级。默认值 900 会先于 Passwall2/mwan3 风格的标记规则执行，且不会修改其数据包标记。"
+
+msgid "Steer the NaiveProxy server connection out of this OpenWrt network (wan/wan1/usbwan). A node-specific setting overrides this value. Empty = system default route."
+msgstr "让 NaiveProxy 服务器连接从此 OpenWrt 网络（wan/wan1/usbwan）发出。节点单独设置会覆盖此值；留空则使用系统默认路由。"
+
+msgid "Start Delay (seconds)"
+msgstr "启动延迟（秒）"
+
+msgid ""
+"Delay before Bypass starts on boot (lets WAN/DNS settle). 0 = start "
+"immediately."
+msgstr "开机时延迟启动 Bypass，让 WAN/DNS 先就绪；0 表示立即启动。"
+
+msgid "Domain Strategy"
+msgstr "域名解析策略"
+
+msgid ""
+"AsIs = no DNS resolution. IpIfNonMatch = resolve on domain mismatch. "
+"IpOnDemand = resolve when a rule needs an IP."
+msgstr ""
+"AsIs = 不解析 DNS；IpIfNonMatch = 域名未命中时解析；IpOnDemand = 规则需要 IP "
+"时解析。"
 
 msgid "Default Direct Interface"
 msgstr "默认输出接口"
 
-msgid "Bind the direct outbound to this network interface so direct shunt traffic egresses here. Empty = system default route."
-msgstr "将直连出站绑定到该网络接口，使分流直连流量从此接口发出。留空则使用系统默认路由。"
+msgid "Bind BypassCore direct traffic to this OpenWrt network. The current runtime L3 device and address are resolved through netifd. Empty = system default route."
+msgstr "将 BypassCore 直连流量绑定到此 OpenWrt 网络。程序通过 netifd 解析当前 L3 设备和地址；留空则使用系统默认路由。"
 
-msgid "Transparent-proxy redirect settings."
-msgstr "透明代理重定向设置。"
-
-msgid "Ports & Mode"
-msgstr "端口与模式"
-
-msgid "TCP redirect ports"
-msgstr "TCP 重定向端口"
-
-msgid "Port range or list. \"1:65535\" redirects all TCP. Use \"disable\" to disable."
-msgstr "端口范围或列表。“1:65535” 重定向所有 TCP。填 “disable” 可禁用。"
-
-msgid "UDP redirect ports"
-msgstr "UDP 重定向端口"
-
-msgid "TCP no-redirect ports"
-msgstr "TCP 不重定向端口"
-
-msgid "Ports to leave direct. \"disable\" = none."
-msgstr "保持直连的端口。“disable” 表示无。"
-
-msgid "UDP no-redirect ports"
-msgstr "UDP 不重定向端口"
-
-msgid "Transparent mode"
-msgstr "透明代理模式"
-
-msgid "Redirect (REDIRECT, TCP)"
-msgstr "Redirect（REDIRECT，仅 TCP）"
-
-msgid "TPROXY (TCP + UDP)"
-msgstr "TPROXY（TCP + UDP）"
-
-msgid "TUN (naive manages routing)"
-msgstr "TUN（由 naive 管理路由）"
-
-msgid "naive listen mode. \"redirect\" = TCP only; \"tproxy\" = TCP+UDP (needs kmod-nft-tproxy); \"tun\" = naive creates a tun device."
-msgstr "naive 监听模式。“redirect” = 仅 TCP；“tproxy” = TCP+UDP（需要 kmod-nft-tproxy）；“tun” = naive 创建 tun 设备。"
-
-msgid "Enable IPv6 TProxy"
-msgstr "启用 IPv6 TProxy"
-
-msgid "ChinaDNS-NG split DNS."
-msgstr "ChinaDNS-NG 分流 DNS。"
-
-msgid "ChinaDNS-NG"
-msgstr "ChinaDNS-NG"
+msgid ""
+"Bind the direct outbound to this network interface so direct shunt traffic "
+"egresses here. Empty = system default route."
+msgstr ""
+"将直连出站绑定到该网络接口，使分流直连流量从此接口发出。留空则使用系统默认路"
+"由。"
 
 msgid "Domestic DNS (china-dns)"
 msgstr "国内 DNS（china-dns）"
 
-msgid "Resolves domestic domains. \"auto\" = detect ISP DNS from resolv.conf."
-msgstr "解析国内域名。“auto” 表示从 resolv.conf 自动检测运营商 DNS。"
+msgid "\"auto\" = detect ISP DNS from resolv.conf."
+msgstr "“auto”表示从 resolv.conf 自动检测运营商 DNS。"
 
 msgid "Remote / Foreign DNS (trust-dns)"
 msgstr "国外 DNS（trust-dns）"
-
-msgid "Resolves foreign domains; their IPs are routed through the proxy."
-msgstr "解析国外域名；其解析到的 IP 会走代理。"
 
 msgid "Remote DNS protocol"
 msgstr "国外 DNS 协议"
@@ -181,9 +218,6 @@ msgstr "TCP"
 
 msgid "TLS (DoT)"
 msgstr "TLS (DoT)"
-
-msgid "HTTPS (DoH)"
-msgstr "HTTPS (DoH)"
 
 msgid "Query strategy"
 msgstr "查询策略"
@@ -200,26 +234,158 @@ msgstr "IPv4 + IPv6"
 msgid "ChinaDNS-NG listen port"
 msgstr "ChinaDNS-NG 监听端口"
 
-msgid "NaiveProxy nodes (https)."
-msgstr "NaiveProxy 节点（https）。"
+msgid "BypassCore domestic DNS"
+msgstr "BypassCore 国内 DNS"
 
-msgid "Nodes"
-msgstr "节点"
+msgid "Upstream for domestic domains in the BypassCore DNS section."
+msgstr "BypassCore DNS 配置中用于国内域名的上游。"
 
-msgid "Remarks"
-msgstr "备注"
+msgid "BypassCore remote DNS"
+msgstr "BypassCore 远程 DNS"
 
-msgid "Type"
-msgstr "类型"
+msgid "Domestic split domain"
+msgstr "国内分流域名"
 
-msgid "Address"
-msgstr "地址"
+msgid "Redirect dnsmasq to ChinaDNS-NG"
+msgstr "将 dnsmasq 重定向到 ChinaDNS-NG"
 
-msgid "Port"
-msgstr "端口"
+msgid "Force special DNS server to need proxy devices."
+msgstr "强制需要代理的设备使用专用 DNS 服务器。"
 
-msgid "Egress"
-msgstr "出口"
+msgid "Enable Node Log"
+msgstr "启用节点日志"
+
+msgid "Log Level"
+msgstr "日志级别"
+
+msgid "Debug"
+msgstr "调试"
+
+msgid "Info"
+msgstr "信息"
+
+msgid "Warning"
+msgstr "警告"
+
+msgid "Error"
+msgstr "错误"
+
+msgid ""
+"Note: Restoring configurations across different versions may cause "
+"compatibility issues."
+msgstr "注意：不同版本间的配置恢复可能会导致兼容性问题。"
+
+msgid "Backing up…"
+msgstr "正在备份…"
+
+msgid "DL Backup"
+msgstr "下载备份"
+
+msgid "Backup failed: "
+msgstr "备份失败："
+
+msgid "unknown"
+msgstr "未知"
+
+msgid "Choose a .tar.gz file first."
+msgstr "请先选择 .tar.gz 文件。"
+
+msgid "Restoring…"
+msgstr "正在恢复…"
+
+msgid "RST Backup"
+msgstr "恢复备份"
+
+msgid "Restored. Restart Bypass to apply."
+msgstr "恢复完成，请重启 Bypass 使配置生效。"
+
+msgid "Restore failed: "
+msgstr "恢复失败："
+
+msgid "Restore to default configuration? This deletes your current config."
+msgstr "恢复默认配置？这会删除当前配置。"
+
+msgid "Are you sure? This cannot be undone."
+msgstr "确定继续吗？此操作无法撤销。"
+
+msgid "Resetting…"
+msgstr "正在重置…"
+
+msgid "Do Reset"
+msgstr "执行重置"
+
+msgid "Backup and Restore"
+msgstr "备份还原"
+
+msgid "Backup or Restore Client Configurations."
+msgstr "备份或恢复客户端配置。"
+
+msgid "Create Backup File"
+msgstr "创建备份文件"
+
+msgid "Restore Backup File"
+msgstr "恢复备份文件"
+
+msgid "Restore to default configuration"
+msgstr "恢复默认配置"
+
+msgid "Results appear here."
+msgstr "结果将显示在此。"
+
+msgid "Please enter query content!"
+msgstr "请输入查询内容！"
+
+msgid "Querying…"
+msgstr "查询中…"
+
+msgid "No results were found!"
+msgstr "未找到结果！"
+
+msgid "Error: "
+msgstr "错误："
+
+msgid "Enter a domain or IP"
+msgstr "请输入域名或 IP"
+
+msgid "Query"
+msgstr "查询"
+
+msgid "Tips:"
+msgstr "提示："
+
+msgid ""
+"By entering a domain or IP, you can query the Geo rule list they belong to."
+msgstr "输入域名或 IP，可查询其所属的 Geo 规则列表。"
+
+msgid ""
+"By entering a GeoIP or Geosite, you can extract the domains/IPs they contain."
+msgstr "输入 GeoIP 或 Geosite，可提取其包含的域名/IP。"
+
+msgid ""
+"Use the GeoIP/Geosite query function to verify if the entered Geo rules are "
+"correct."
+msgstr "使用 GeoIP/Geosite 查询功能验证输入的 Geo 规则是否正确。"
+
+msgid "Domain/IP Query"
+msgstr "域名/IP 查询"
+
+msgid "Enter a domain or IP to query the Geo rule list they belong to."
+msgstr "输入域名或 IP，查询其所属的 Geo 规则列表。"
+
+msgid "GeoIP/Geosite Query"
+msgstr "GeoIP/Geosite 查询"
+
+msgid ""
+"Enter a GeoIP or Geosite to extract the domains/IPs they contain. Format: "
+"geoip:cn or geosite:gfw"
+msgstr ""
+"输入 GeoIP/Geosite，提取它们所包含的域名/IP。格式：geoip:cn 或 geosite:gfw"
+
+msgid "Clear logs"
+msgstr "清空日志"
+
+msgid "Node Config"
+msgstr "节点配置"
 
 msgid "No node selected"
 msgstr "未选择节点"
@@ -230,6 +396,12 @@ msgstr "请从“节点列表”中选择一个节点编辑，或在那里新增
 msgid "NaiveProxy node (https)."
 msgstr "NaiveProxy 节点（https）。"
 
+msgid "Remarks"
+msgstr "备注"
+
+msgid "Type"
+msgstr "类型"
+
 msgid "Only NaiveProxy (https) is supported in this build."
 msgstr "本版本仅支持 NaiveProxy（https）。"
 
@@ -238,6 +410,9 @@ msgstr "地址（服务器）"
 
 msgid "Domain or IP of the NaiveProxy server."
 msgstr "NaiveProxy 服务器的域名或 IP。"
+
+msgid "Port"
+msgstr "端口"
 
 msgid "Username"
 msgstr "用户名"
@@ -248,14 +423,177 @@ msgstr "密码"
 msgid "Egress Interface"
 msgstr "出口接口"
 
-msgid "Steer the naive -> server connection out of this interface. Empty = use the global default egress interface."
+msgid "Steer this NaiveProxy server connection out of the selected OpenWrt network. Empty = use the global default egress interface."
+msgstr "让此 NaiveProxy 服务器连接从所选 OpenWrt 网络发出；留空则使用全局默认出口接口。"
+
+msgid ""
+"Steer the naive -> server connection out of this interface. Empty = use the "
+"global default egress interface."
 msgstr "将 naive → 服务器的连接从该接口发出。留空则使用全局默认出口接口。"
 
 msgid "(use global default)"
 msgstr "（使用全局默认）"
 
-msgid "Rules"
-msgstr "规则"
+msgid "NaiveProxy nodes (https)."
+msgstr "NaiveProxy 节点（https）。"
+
+msgid "TCPing"
+msgstr "TCP 延迟"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "No nodes yet. Add one below."
+msgstr "暂无节点，请在下方添加。"
+
+msgid "Testing…"
+msgstr "测试中…"
+
+msgid "Test"
+msgstr "测试"
+
+msgid "In use"
+msgstr "使用中"
+
+msgid "Use"
+msgstr "使用"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "New Node"
+msgstr "新节点"
+
+msgid "Add"
+msgstr "添加"
+
+#, javascript-format
+msgid "Use node: %s ?"
+msgstr "使用节点：%s？"
+
+msgid "Confirm"
+msgstr "确认"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "(copy)"
+msgstr "（副本）"
+
+#, javascript-format
+msgid "Delete node: %s ?"
+msgstr "删除节点：%s？"
+
+msgid "Use comma-separated ports or ranges, for example 80,443,1000:2000."
+msgstr "请使用逗号分隔端口或端口范围，例如 80,443,1000:2000。"
+
+msgid "Ports must be between 1 and 65535 and ranges must be ascending."
+msgstr "端口必须介于 1 到 65535，且范围的起始端口不能大于结束端口。"
+
+msgid "Delay Settings"
+msgstr "定时配置"
+
+msgid "Delay Start"
+msgstr "开机时延时启动"
+
+msgid "Units: seconds."
+msgstr "单位：秒。"
+
+msgid "automatically mode"
+msgstr "自动执行模式"
+
+msgid "Disable"
+msgstr "禁用"
+
+msgid "Loop Mode"
+msgstr "循环"
+
+msgid "Every day"
+msgstr "每天"
+
+msgid "Every Monday"
+msgstr "每周一"
+
+msgid "Every Tuesday"
+msgstr "每周二"
+
+msgid "Every Wednesday"
+msgstr "每周三"
+
+msgid "Every Thursday"
+msgstr "每周四"
+
+msgid "Every Friday"
+msgstr "每周五"
+
+msgid "Every Saturday"
+msgstr "每周六"
+
+msgid "Every Sunday"
+msgstr "每周日"
+
+msgid "Time"
+msgstr "时间"
+
+msgid "Interval(Hour)"
+msgstr "间隔（小时）"
+
+msgid "hour"
+msgstr "小时"
+
+msgid "Forwarding Settings"
+msgstr "转发配置"
+
+msgid "TCP No Redir Ports"
+msgstr "TCP不转发端口"
+
+msgid "No patterns are used"
+msgstr "不使用"
+
+msgid "All"
+msgstr "所有"
+
+msgid "UDP No Redir Ports"
+msgstr "UDP不转发端口"
+
+msgid ""
+"Fill in the ports you don't want to be forwarded by the agent, with the "
+"highest priority."
+msgstr "填写你不希望被代理转发的端口，优先级最高。"
+
+msgid "TCP Redir Ports"
+msgstr "TCP转发端口"
+
+msgid "Common Use"
+msgstr "常用的"
+
+msgid "Only Web"
+msgstr "仅网页"
+
+msgid "UDP Redir Ports"
+msgstr "UDP转发端口"
+
+msgid "TCP Proxy way"
+msgstr "TCP 代理方式"
+
+msgid "REDIRECT"
+msgstr "REDIRECT"
+
+msgid "TPROXY"
+msgstr "TPROXY"
+
+msgid "Redirecting to Rule Manage…"
+msgstr "正在返回规则管理…"
+
+#, javascript-format
+msgid "Edit Shunt Rule: %s"
+msgstr "编辑分流规则：%s"
 
 msgid "Outbound"
 msgstr "出站"
@@ -272,219 +610,114 @@ msgstr "阻断"
 msgid "Network"
 msgstr "网络"
 
-msgid "TCP + UDP"
-msgstr "TCP + UDP"
-
 msgid "Domain list"
 msgstr "域名列表"
 
-msgid "One rule per line."
-msgstr "每行一条规则。"
+msgid ""
+"One rule per line. v2ray prefixes: geosite:, domain:, full:, regexp:, ext:, "
+"or a bare domain."
+msgstr ""
+"每行一条规则，可使用 geosite:、domain:、full:、regexp:、ext: 前缀或直接填写域"
+"名。"
 
 msgid "IP / CIDR list"
 msgstr "IP / CIDR 列表"
 
-msgid "Download / refresh geoip.dat and geosite.dat (Loyalsoldier) used by BypassCore geosite:/geoip: rules and the firewall ipset/nftset plane."
-msgstr "下载 / 刷新 BypassCore geosite:/geoip: 规则与防火墙 ipset/nftset 平面所使用的 geoip.dat 和 geosite.dat（Loyalsoldier）。"
+msgid "One rule per line. geoip:, ext:, or a bare CIDR / IP."
+msgstr "每行一条规则，可使用 geoip:、ext: 或直接填写 CIDR / IP。"
 
-msgid "geoip.dat"
-msgstr "geoip.dat"
+msgid "Enter a valid time in HH:MM format."
+msgstr "请输入有效的 HH:MM 格式时间。"
 
-msgid "Size: %s bytes · Last modified: %s"
-msgstr "大小：%s 字节 · 最后修改：%s"
+msgid "Rule status"
+msgstr "规则版本"
+
+msgid "GeoIP Update URL"
+msgstr "GeoIP 更新 URL"
+
+msgid "Loyalsoldier/geoip"
+msgstr "Loyalsoldier/geoip"
+
+msgid "Loyalsoldier/geoip (gh-proxy)"
+msgstr "Loyalsoldier/geoip（gh-proxy）"
+
+msgid "Loyalsoldier/geoip (CDN)"
+msgstr "Loyalsoldier/geoip（CDN）"
+
+msgid "MetaCubeX/geoip"
+msgstr "MetaCubeX/geoip"
+
+msgid "MetaCubeX/geoip (gh-proxy)"
+msgstr "MetaCubeX/geoip（gh-proxy）"
+
+msgid "MetaCubeX/geoip (CDN)"
+msgstr "MetaCubeX/geoip（CDN）"
+
+msgid "Geosite Update URL"
+msgstr "Geosite 更新 URL"
+
+msgid "Loyalsoldier/geosite"
+msgstr "Loyalsoldier/geosite"
+
+msgid "Loyalsoldier/geosite (gh-proxy)"
+msgstr "Loyalsoldier/geosite（gh-proxy）"
+
+msgid "Loyalsoldier/geosite (CDN)"
+msgstr "Loyalsoldier/geosite（CDN）"
+
+msgid "MetaCubeX/geosite"
+msgstr "MetaCubeX/geosite"
+
+msgid "MetaCubeX/geosite (gh-proxy)"
+msgstr "MetaCubeX/geosite（gh-proxy）"
+
+msgid "MetaCubeX/geosite (CDN)"
+msgstr "MetaCubeX/geosite（CDN）"
+
+msgid "Location of Geo rule files"
+msgstr "Geo 资源文件目录"
+
+msgid "Directory where geoip.dat and geosite.dat live."
+msgstr "geoip.dat 和 geosite.dat 所在目录。"
+
+msgid "Auto Update Mode"
+msgstr "自动更新模式"
+
+msgid "Update Time"
+msgstr "更新时间"
+
+msgid "Update Interval(hour)"
+msgstr "更新间隔(小时)"
+
+#, javascript-format
+msgid "geoip.dat: %s · %s"
+msgstr "geoip.dat：%s · %s"
+
+#, javascript-format
+msgid "geosite.dat: %s · %s"
+msgstr "geosite.dat：%s · %s"
 
 msgid "Updating…"
 msgstr "更新中…"
 
-msgid "Update geoip/geosite"
-msgstr "更新 geoip/geosite"
+msgid "Manually update"
+msgstr "手动更新"
 
 msgid "Done"
 msgstr "完成"
 
-msgid "Automatic updates"
-msgstr "自动更新"
+msgid "Update failed"
+msgstr "更新失败"
 
-msgid "Periodic update is enabled when global_rules.geosite_update = 1 (cron, default 04:30 daily). Toggle it and the auto-update minute on the Basic Settings page (future)."
-msgstr "当 global_rules.geosite_update = 1 时启用定期更新（cron，默认每日 04:30）。后续可在“基本设置”页切换并调整自动更新时间。"
+msgid "Rule files"
+msgstr "规则文件"
 
-msgid "(no log yet)"
-msgstr "（暂无日志）"
+msgid "Note the priority: the higher the order, the higher the priority."
+msgstr "请注意优先级：顺序越靠上，优先级越高。"
 
-msgid "Refresh"
-msgstr "刷新"
+#, javascript-format
+msgid "Delete rule: %s ?"
+msgstr "删除规则：%s？"
 
-msgid "Clear"
-msgstr "清空"
-
-msgid "(cleared)"
-msgstr "（已清空）"
-
-msgid "Bypass — Overview"
-msgstr "Bypass — 概览"
-
-msgid "Running"
-msgstr "运行中"
-
-msgid "yes"
-msgstr "是"
-
-msgid "no"
-msgstr "否"
-
-msgid "present"
-msgstr "已安装"
-
-msgid "missing"
-msgstr "缺失"
-
-msgid "bypasscore ELF"
-msgstr "bypasscore ELF"
-
-msgid "Linux ELF"
-msgstr "Linux ELF"
-
-msgid "not Linux ELF"
-msgstr "非 Linux ELF"
-
-msgid "Firewall"
-msgstr "防火墙"
-
-msgid "none"
-msgstr "无"
-
-msgid "default"
-msgstr "默认"
-
-msgid "Redir port"
-msgstr "重定向端口"
-
-msgid "Enter a destination like tcp:www.google.com:443"
-msgstr "请输入目的地，如 tcp:www.google.com:443"
-
-msgid "Test"
-msgstr "测试"
-
-msgid "Observatory"
-msgstr "探测"
-
-msgid "Results appear here."
-msgstr "结果将显示在此。"
-
-msgid "Error: "
-msgstr "错误："
-
-msgid "unknown"
-msgstr "未知"
-
-msgid "(no output)"
-msgstr "（无输出）"
-
-msgid "Matched: "
-msgstr "命中："
-
-msgid "BypassCore config.json preview"
-msgstr "BypassCore config.json 预览"
-
-msgid "Generate & preview"
-msgstr "生成并预览"
-
-msgid "(none)"
-msgstr "（无）"
-
-msgid "Click to generate/preview."
-msgstr "点击生成/预览。"
-
-msgid "(system default route)"
-msgstr "（系统默认路由）"
-
-msgid "Routing rules consumed by BypassCore (the split/routing engine) and shared with the nftables/ipset plane. domain_list and ip_list use v2ray rule prefixes: geosite:, geoip:, domain:, full:, regexp:, ext:, or bare CIDR/domain."
-msgstr "由 BypassCore（分流/路由引擎）消费、并与 nftables/ipset 平面共享的路由规则。domain_list 与 ip_list 使用 v2ray 规则前缀：geosite:、geoip:、domain:、full:、regexp:、ext: 或裸 CIDR/域名。"
-
-msgid "Install the Linux ELF from https://github.com/kinmeic/BypassCore/releases (the routing/split engine). Route-test / resolve / observatory auto-disable if missing or not a Linux ELF."
-msgstr "从 https://github.com/kinmeic/BypassCore/releases 下载安装 Linux ELF（分流/路由引擎）。缺失或非 Linux ELF 时，路由测试 / DNS 解析 / Observatory 自动禁用。"
-
-msgid "BypassCore route test"
-msgstr "BypassCore 路由测试"
-
-msgid "Preview which shunt rule / outbound a destination matches, using the BypassCore routing engine. Requires the BypassCore Linux ELF binary."
-msgstr "用 BypassCore 路由引擎预览某目的地命中哪条分流规则 / 出站。需要 BypassCore 的 Linux ELF 二进制。"
-
-msgid "The config generated from your shunt rules and fed to BypassCore (the routing engine). Traffic itself is carried by naiveproxy."
-msgstr "由你的分流规则生成、供 BypassCore（路由引擎）使用的配置。流量本身由 naiveproxy 转发。"
-
-
-msgid "DNS resolve (BypassCore)"
-msgstr "DNS 解析（BypassCore）"
-
-msgid "Resolve a domain via BypassCore's DNS subsystem (the split-DNS engine; ChinaDNS-NG remains the live resolver)."
-msgstr "通过 BypassCore 的 DNS 子系统解析域名（分流 DNS 引擎；ChinaDNS-NG 仍作为实时解析器）。"
-
-msgid "Enter a domain to resolve."
-msgstr "请输入要解析的域名。"
-
-msgid "Resolve"
-msgstr "解析"
-
-msgid "Resolved IPs appear here."
-msgstr "解析到的 IP 显示在此。"
-
-msgid "BypassCore domestic DNS"
-msgstr "BypassCore 国内 DNS"
-
-msgid "Upstream for domestic domains in the BypassCore DNS section (UDP/TCP/DoT/DoH). Leave empty to disable the split (only the remote upstream is emitted)."
-msgstr "BypassCore DNS 段中用于国内域名的上游（UDP/TCP/DoT/DoH）。留空则禁用分流（只输出远程上游）。"
-
-msgid "BypassCore remote DNS"
-msgstr "BypassCore 远程 DNS"
-
-msgid "Upstream for everything else in the BypassCore DNS section."
-msgstr "BypassCore DNS 段中用于其余所有域名的上游。"
-
-msgid "Domestic split domain"
-msgstr "国内分流域名"
-
-msgid "v2ray rule prefix that selects which domains use the domestic upstream (default geosite:cn)."
-msgstr "v2ray 规则前缀，决定哪些域名使用国内上游（默认 geosite:cn）。"
-
-msgid "BypassCore as transparent core"
-msgstr "BypassCore 作为透明代理核心"
-
-msgid "0 (default): naiveproxy carries traffic, BypassCore is diagnostic-only. 1: BypassCore runs -run as the transparent proxy core (inbound + sniff + route + SOCKS5-to-naiveproxy); naiveproxy becomes its SOCKS upstream. Requires BypassCore with the SOCKS5 dialer + UDP TPROXY listener (commit e60bd1f+)."
-msgstr "0（默认）：naiveproxy 承载流量，BypassCore 仅做诊断。1：BypassCore 以 -run 作为透明代理核心（inbound + sniff + route + SOCKS5 拨到 naiveproxy），naiveproxy 降为它的 SOCK 上游。需要带 SOCKS5 拨号器 + UDP TPROXY listener 的 BypassCore（commit e60bd1f+）。"
-
-msgid "Force Proxy LAN IP"
-msgstr "强制代理局域网 IP"
-
-msgid "When enabled, the proxy uses the LAN IP as the source address for proxied connections from LAN clients."
-msgstr "启用后，代理将使用局域网 IP 作为来自局域网客户端的代理连接的源地址。"
-
-msgid "Enable auto update rules"
-msgstr "启用自动更新规则"
-
-msgid "Enable scheduled automatic update of GeoIP/Geosite rule files."
-msgstr "启用后按计划自动更新 GeoIP/Geosite 规则文件。"
-
-msgid "Shunt Rule List"
-msgstr "分流规则列表"
-
-msgid "Domain/IP Query"
-msgstr "域名/IP 查询"
-
-msgid "Enter a domain or IP to query the Geo rule list they belong to."
-msgstr "输入域名或 IP，查询其所属的 Geo 规则列表。"
-
-msgid "Enter a domain or IP"
-msgstr "请输入域名或 IP"
-
-msgid "By entering a domain or IP, you can query the Geo rule list they belong to."
-msgstr "输入域名或 IP，可查询其所属的 Geo 规则列表。"
-
-msgid "By entering a GeoIP or Geosite, you can extract the domains/IPs they contain."
-msgstr "输入 GeoIP 或 Geosite，可提取其包含的域名/IP。"
-
-msgid "Use the GeoIP/Geosite query function to verify if the entered Geo rules are correct."
-msgstr "使用 GeoIP/Geosite 查询功能验证输入的 Geo 规则是否正确。"
-
-msgid "No results were found!"
-msgstr "未找到结果！"
+msgid "Summary"
+msgstr "摘要"
