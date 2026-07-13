@@ -104,6 +104,12 @@ msgstr "出口路由表"
 msgid "Routing table id used for the egress policy rule. Advanced."
 msgstr "出口策略规则使用的路由表 ID（高级）。"
 
+msgid "Default Direct Interface"
+msgstr "默认输出接口"
+
+msgid "Bind the direct outbound to this network interface so direct shunt traffic egresses here. Empty = system default route."
+msgstr "将直连出站绑定到该网络接口，使分流直连流量从此接口发出。留空则使用系统默认路由。"
+
 msgid "Transparent-proxy redirect settings."
 msgstr "透明代理重定向设置。"
 
@@ -445,4 +451,40 @@ msgid "BypassCore as transparent core"
 msgstr "BypassCore 作为透明代理核心"
 
 msgid "0 (default): naiveproxy carries traffic, BypassCore is diagnostic-only. 1: BypassCore runs -run as the transparent proxy core (inbound + sniff + route + SOCKS5-to-naiveproxy); naiveproxy becomes its SOCKS upstream. Requires BypassCore with the SOCKS5 dialer + UDP TPROXY listener (commit e60bd1f+)."
-msgstr "0（默认）：naiveproxy 承载流量，BypassCore 仅做诊断。1：BypassCore 以 -run 作为透明代理核心（inbound + sniff + route + SOCKS5 拨到 naiveproxy），naiveproxy 降为它的 SOCKS 上游。需要带 SOCKS5 拨号器 + UDP TPROXY listener 的 BypassCore（commit e60bd1f+）。"
+msgstr "0（默认）：naiveproxy 承载流量，BypassCore 仅做诊断。1：BypassCore 以 -run 作为透明代理核心（inbound + sniff + route + SOCKS5 拨到 naiveproxy），naiveproxy 降为它的 SOCK 上游。需要带 SOCKS5 拨号器 + UDP TPROXY listener 的 BypassCore（commit e60bd1f+）。"
+
+msgid "Force Proxy LAN IP"
+msgstr "强制代理局域网 IP"
+
+msgid "When enabled, the proxy uses the LAN IP as the source address for proxied connections from LAN clients."
+msgstr "启用后，代理将使用局域网 IP 作为来自局域网客户端的代理连接的源地址。"
+
+msgid "Enable auto update rules"
+msgstr "启用自动更新规则"
+
+msgid "Enable scheduled automatic update of GeoIP/Geosite rule files."
+msgstr "启用后按计划自动更新 GeoIP/Geosite 规则文件。"
+
+msgid "Shunt Rule List"
+msgstr "分流规则列表"
+
+msgid "Domain/IP Query"
+msgstr "域名/IP 查询"
+
+msgid "Enter a domain or IP to query the Geo rule list they belong to."
+msgstr "输入域名或 IP，查询其所属的 Geo 规则列表。"
+
+msgid "Enter a domain or IP"
+msgstr "请输入域名或 IP"
+
+msgid "By entering a domain or IP, you can query the Geo rule list they belong to."
+msgstr "输入域名或 IP，可查询其所属的 Geo 规则列表。"
+
+msgid "By entering a GeoIP or Geosite, you can extract the domains/IPs they contain."
+msgstr "输入 GeoIP 或 Geosite，可提取其包含的域名/IP。"
+
+msgid "Use the GeoIP/Geosite query function to verify if the entered Geo rules are correct."
+msgstr "使用 GeoIP/Geosite 查询功能验证输入的 Geo 规则是否正确。"
+
+msgid "No results were found!"
+msgstr "未找到结果！"

@@ -3,9 +3,12 @@
 'require fs';
 'require ui';
 
-// Geo View — read-only query page mirroring passwall2's rule/geoview.htm.
-// No UCI form; two query rows + a results textarea. Calls api.sh geo_view
-// which wraps the geoview binary (-action lookup / -action extract).
+// Geo View — query page mirroring passwall2's rule/geoview.htm.
+// Two query modes:
+//   • Domain/IP Query (lookup): enter a domain or IP → which geo rule lists it belongs to.
+//   • GeoIP/Geosite Query (extract): enter geoip:cn / geosite:gfw → extract member domains/IPs.
+// Both write into a shared readonly textarea. Calls api.sh geo_view which wraps
+// the geoview binary with correct -type / -input / -value|-list flags.
 
 function api(/* action, ...args */) {
 	return fs.exec('/usr/share/bypass/api.sh', Array.prototype.slice.call(arguments)).then(function (res) {
@@ -17,6 +20,7 @@ function api(/* action, ...args */) {
 return view.extend({
 	render: function () {
 		var result = E('textarea', {
+			id: 'geoview_textarea',
 			class: 'cbi-input-textarea',
 			style: 'width:100%;margin-top:10px;font-family:monospace;font-size:12px',
 			rows: 25,
@@ -41,29 +45,46 @@ return view.extend({
 				if (r.code === 0) {
 					result.value = r.output || _('No results were found!');
 				} else {
-					result.value = _('Error: ') + (r.error || _('unknown'));
+					result.value = _('Error: ') + (r.error || r.output || _('unknown'));
 				}
 			});
 		}
 
-		// Enter-key submit for both inputs.
 		function bindEnter(input, btn, action) {
 			input.addEventListener('keydown', function (ev) {
 				if (ev.key === 'Enter') { ev.preventDefault(); doQuery(btn, action, input); }
 			});
 		}
 
-		var lookupInput = E('input', { type: 'text', class: 'cbi-input-text', style: 'width:340px' });
-		var lookupBtn = E('button', { class: 'cbi-button cbi-button-apply' }, _('Query'));
+		var lookupInput = E('input', {
+			type: 'text',
+			id: 'geoview.lookup',
+			class: 'cbi-input-text',
+			style: 'flex:1;min-width:200px',
+			placeholder: _('Enter a domain or IP')
+		});
+		var lookupBtn = E('button', {
+			id: 'lookup-view_btn',
+			class: 'cbi-button cbi-button-apply'
+		}, _('Query'));
 		lookupBtn.addEventListener('click', function () { doQuery(lookupBtn, 'lookup', lookupInput); });
 		bindEnter(lookupInput, lookupBtn, 'lookup');
 
-		var extractInput = E('input', { type: 'text', class: 'cbi-input-text', style: 'width:340px', placeholder: 'geoip:cn' });
-		var extractBtn = E('button', { class: 'cbi-button cbi-button-apply' }, _('Query'));
+		var extractInput = E('input', {
+			type: 'text',
+			id: 'geoview.extract',
+			class: 'cbi-input-text',
+			style: 'flex:1;min-width:200px',
+			placeholder: 'geoip:cn / geosite:gfw'
+		});
+		var extractBtn = E('button', {
+			id: 'extract-view_btn',
+			class: 'cbi-button cbi-button-apply'
+		}, _('Query'));
 		extractBtn.addEventListener('click', function () { doQuery(extractBtn, 'extract', extractInput); });
 		bindEnter(extractInput, extractBtn, 'extract');
 
-		return E('div', { class: 'cbi-map' }, [
+		return E('div', { class: 'cbi-map', style: 'margin-bottom:2rem' }, [
 			E('h2', { name: 'content' }, _('Geo View')),
 			E('div', { class: 'cbi-section-descr' }, [
 				E('ul', { style: 'margin:0;padding-left:1.2em' }, [
@@ -73,20 +94,30 @@ return view.extend({
 				])
 			]),
 
+			/* Domain/IP Query */
 			E('div', { class: 'cbi-section', style: 'margin-top:1rem' }, [
 				E('h3', {}, _('Domain/IP Query')),
-				E('p', { style: 'font-size:12px;color:#8898aa' },
+				E('div', { style: 'font-size:12px;color:#8898aa;margin-bottom:8px' },
 					_('Enter a domain or IP to query the Geo rule list they belong to.')),
-				E('div', { style: 'margin-bottom:8px' }, [lookupInput, ' ', lookupBtn]),
+				E('div', { style: 'display:flex;gap:8px;align-items:center' }, [
+					lookupInput, lookupBtn
+				]),
 				result
 			]),
 
+			/* GeoIP/Geosite Query */
 			E('div', { class: 'cbi-section' }, [
 				E('h3', {}, _('GeoIP/Geosite Query')),
-				E('p', { style: 'font-size:12px;color:#8898aa' },
+				E('div', { style: 'font-size:12px;color:#8898aa;margin-bottom:8px' },
 					_('Enter a GeoIP or Geosite to extract the domains/IPs they contain. Format: geoip:cn or geosite:gfw')),
-				E('div', {}, [extractInput, ' ', extractBtn])
+				E('div', { style: 'display:flex;gap:8px;align-items:center' }, [
+					extractInput, extractBtn
+				])
 			])
 		]);
-	}
+	},
+
+	handleReset: null,
+	handleSaveApply: null,
+	handleSave: null
 });

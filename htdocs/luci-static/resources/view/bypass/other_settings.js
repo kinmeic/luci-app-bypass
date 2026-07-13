@@ -104,6 +104,10 @@ return view.extend({
 		o = sFwd.option(form.Flag, 'accept_icmpv6', _('Hijacking ICMPv6 (IPv6 PING)'));
 		o.depends('ipv6_tproxy', '1');
 
+		o = sFwd.option(form.Flag, 'force_proxy_lan_ip', _('Force Proxy LAN IP'),
+			_('When enabled, the proxy uses the LAN IP as the source address for proxied connections from LAN clients.'));
+		o.rmempty = false;
+
 		return m.render();
 	}
 });

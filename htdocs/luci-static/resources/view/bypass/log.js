@@ -58,7 +58,7 @@ return view.extend({
 		// Stop polling when leaving the page.
 		window.addEventListener('popsstate', function () { clearInterval(pollHandle); });
 
-		return E('div', { class: 'cbi-map' }, [
+		return E('div', { class: 'cbi-map', style: 'margin-bottom:2rem' }, [
 			E('h2', { name: 'content' }, _('Runtime Logs')),
 			E('div', { style: 'margin-bottom:8px' }, [clearBtn]),
 			ta

@@ -226,24 +226,74 @@ do_connect_status() {
 
 # geo_view <action> <value> -> { code, output }
 # Wraps the geoview binary for the Geo View page. action = lookup (domain/IP →
-# geo rule) or extract (geoip:cc / geosite:name → member list). Plain text
-# output is returned as a JSON string.
+# geo rule list) or extract (geoip:cc / geosite:name → member list).
+# Mirrors passwall2's controller geo_view() invocation:
+#   lookup:  geoview -type <geoip|geosite> -action lookup  -input <dat> -value <q> -lowmem=true
+#   extract: geoview -type <geoip|geosite> -action extract -input <dat> -list  <c> -lowmem=true
 do_geo_view() {
 	local action=$1 value=$2
-	local bin out
+	local bin geo_dir geoip_path geosite_path
 	bin=$(first_type "$(config_t_get global_app geoview_file /usr/bin/geoview)" geoview)
+	geo_dir=$(config_t_get global_rules v2ray_location_asset /usr/share/v2ray/)
+	geo_dir="${geo_dir%*/}"
+	geoip_path="${geo_dir}/geoip.dat"
+	geosite_path="${geo_dir}/geosite.dat"
 	json_init
 	if [ -z "$bin" ]; then
 		json_add_int code -1
 		json_add_string error "geoview binary not found"
-	elif [ -z "$action" ] || [ -z "$value" ]; then
+		emit
+		return
+	fi
+	if [ -z "$action" ] || [ -z "$value" ]; then
 		json_add_int code -1
 		json_add_string error "missing action or value"
-	else
-		out=$("$bin" -action "$action" -list "$value" 2>&1)
-		json_add_int code $?
-		json_add_string output "$out"
+		emit
+		return
 	fi
+
+	local geo_type file_path out
+	if [ "$action" = "lookup" ]; then
+		# IP → geoip; anything else → geosite.
+		if echo "$value" | grep -qE "^([0-9]{1,3}[\.]){3}[0-9]{1,3}$" || \
+		   echo "$value" | grep -qE "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}"; then
+			geo_type="geoip"
+			file_path="$geoip_path"
+		else
+			geo_type="geosite"
+			file_path="$geosite_path"
+		fi
+		out=$("$bin" -type "$geo_type" -action lookup -input "$file_path" -value "$value" -lowmem=true 2>&1)
+	elif [ "$action" = "extract" ]; then
+		# Parse geoip:<list> or geosite:<list>.
+		case "$value" in
+			geoip:*)
+				geo_type="geoip"
+				file_path="$geoip_path"
+				value="${value#geoip:}"
+				;;
+			geosite:*)
+				geo_type="geosite"
+				file_path="$geosite_path"
+				value="${value#geosite:}"
+				;;
+			*)
+				json_add_int code -1
+				json_add_string error "format: geoip:cn or geosite:gfw"
+				emit
+				return
+				;;
+		esac
+		out=$("$bin" -type "$geo_type" -action extract -input "$file_path" -list "$value" -lowmem=true 2>&1)
+	else
+		json_add_int code -1
+		json_add_string error "unknown action: $action"
+		emit
+		return
+	fi
+
+	json_add_int code $?
+	json_add_string output "$out"
 	emit
 }
 

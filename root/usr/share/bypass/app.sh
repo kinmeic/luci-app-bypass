@@ -69,6 +69,9 @@ get_config() {
 	BYPASS_AS_CORE=$(config_t_get global bypass_as_core 0)
 	V2RAY_LOCATION_ASSET=$(config_t_get global_rules v2ray_location_asset /usr/share/v2ray/)
 	DOMAIN_STRATEGY=$(config_t_get global_rules domainStrategy IpIfNonMatch)
+	# Direct outbound egress interface (bind the freedom "direct" outbound to a
+	# named WAN so all _direct shunt traffic egresses there). Empty = unbound.
+	DIRECT_EGRESS_IFACE=$(config_t_get global_rules direct_egress_interface)
 
 	REDIR_PORT=$(echo $(get_new_port 1041 tcp,udp))
 	TCP_PROXY_WAY=$(config_t_get global_forwarding tcp_proxy_way redirect)
@@ -79,6 +82,7 @@ get_config() {
 	PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)
 	ACCEPT_ICMP=$(config_t_get global_forwarding accept_icmp 0)
 	ACCEPT_ICMPV6=$(config_t_get global_forwarding accept_icmpv6 0)
+	FORCE_PROXY_LAN_IP=$(config_t_get global_forwarding force_proxy_lan_ip 0)
 
 	DOMESTIC_DNS_USER=$(config_t_get global_dns domestic_dns auto)
 	REMOTE_DNS=$(config_t_get global_dns remote_dns 1.1.1.1)
@@ -275,6 +279,16 @@ gen_bypasscore_config() {
 		json_add_object ''
 			json_add_string tag direct
 			json_add_string mode freedom
+			# Bind the direct outbound to the configured interface so _direct
+			# shunt traffic egresses there (mirrors the multi-WAN bind below).
+			if [ -n "$DIRECT_EGRESS_IFACE" ]; then
+				local _dlip
+				_dlip=$(uci -q get "network.${DIRECT_EGRESS_IFACE}.ipaddr" 2>/dev/null)
+				json_add_object bind
+					json_add_string interface "$DIRECT_EGRESS_IFACE"
+					[ -n "$_dlip" ] && json_add_string localIP "$_dlip"
+				json_close_object
+			fi
 		json_close_object
 		json_add_object ''
 			json_add_string tag block
@@ -521,9 +535,10 @@ start_crontab() {
 	week=$(config_t_get global_rules update_week_mode)
 	time=$(config_t_get global_rules update_time_mode "0:00")
 	interval=$(config_t_get global_rules update_interval_mode 2)
-	local geo_en
+	local geo_en auto_en
 	geo_en=$(config_t_get global_rules geosite_update 1)
-	if [ "$geo_en" = "1" ] && [ -n "$week" ]; then
+	auto_en=$(config_t_get global_rules auto_update 0)
+	if [ "$auto_en" = "1" ] && [ "$geo_en" = "1" ] && [ -n "$week" ]; then
 		prefix=$(cron_prefix "$week" "$time" "$interval")
 		[ -n "$prefix" ] && echo "$prefix ${APP_PATH}/rule_update.sh >>${LOG_FILE} 2>&1" >> /etc/crontabs/root
 	fi

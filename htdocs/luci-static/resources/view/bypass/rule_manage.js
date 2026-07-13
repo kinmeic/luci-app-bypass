@@ -50,6 +50,11 @@ return view.extend({
 		o.placeholder = o.default;
 		o.rmempty = false;
 
+		o = gs.option(form.Flag, 'auto_update', _('Enable auto update rules'),
+			_('Enable scheduled automatic update of GeoIP/Geosite rule files.'));
+		o.rmempty = false;
+		o.default = '0';
+
 		o = gs.option(form.ListValue, 'update_week_mode', _('Auto Update Mode'));
 		o.value('', _('Disable'));
 		o.value('8', _('Loop Mode'));
@@ -61,6 +66,7 @@ return view.extend({
 		o.value('5', _('Every Friday'));
 		o.value('6', _('Every Saturday'));
 		o.value('0', _('Every Sunday'));
+		o.depends('auto_update', '1');
 
 		o = gs.option(form.Value, 'update_time_mode', _('Update Time'));
 		o.value('0:00');
@@ -70,6 +76,7 @@ return view.extend({
 			else o.value(t + ':00');
 		}
 		o.default = '0:00';
+		o.depends('auto_update', '1');
 		o.depends('update_week_mode', '0');
 		o.depends('update_week_mode', '1');
 		o.depends('update_week_mode', '2');
@@ -82,6 +89,7 @@ return view.extend({
 		o = gs.option(form.ListValue, 'update_interval_mode', _('Update Interval(hour)'));
 		for (var h = 1; h <= 24; h++) o.value(String(h), h + ' ' + _('hour'));
 		o.default = '2';
+		o.depends('auto_update', '1');
 		o.depends('update_week_mode', '8');
 
 		o = gs.option(form.Flag, 'geoip_update', _('Update GeoIP'));
@@ -129,7 +137,7 @@ return view.extend({
 		ss.anonymous = false;
 		ss.sortable = true;
 		ss.extedit = function (sid) {
-			return 'rule_edit?rule=' + encodeURIComponent(sid);
+			return L.url('admin/services/bypass/rule_edit') + '?rule=' + encodeURIComponent(sid);
 		};
 
 		o = ss.option(form.DummyValue, 'remarks', _('Remarks'));
