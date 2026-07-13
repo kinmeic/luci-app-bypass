@@ -1,12 +1,17 @@
 name: Build & Release
 
-# Builds the luci-app-bypass package (.ipk on OpenWrt 23.05, .apk on 24.10)
-# using the official OpenWrt SDK via openwrt/gh-action-sdk, then publishes a
-# GitHub release with both packages attached.
+# Builds the luci-app-bypass package for OpenWrt 24.10 (.ipk, or .apk when the
+# SDK is built with CONFIG_APK) using the official OpenWrt SDK via
+# openwrt/gh-action-sdk, then publishes a GitHub release with the package(s)
+# attached.
 #
 # Triggers:
 #   - push tag v*            -> build + publish release (version = tag w/o 'v')
 #   - workflow_dispatch      -> build + publish release (version = input)
+#
+# Note: OpenWrt 23.05 is no longer built (it ships libubox20230523 which is
+# incompatible with the libubox20240329 dependency produced by the 24.10 SDK).
+# 23.05 users should stay on v1.0.0 (the last 23.05 release).
 
 on:
   push:
@@ -15,27 +20,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.0.0)'
+        description: 'Release version (e.g. 1.1.0)'
         required: true
-        default: '1.0.0'
+        default: '1.1.0'
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build (${{ matrix.label }})
+    name: Build (OpenWrt 24.10)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # OpenWrt 23.05 SDK (produces .ipk)
-          - sdk: "23.05.5"
-            label: "23.05 (ipk)"
-          # OpenWrt 24.10 SDK (produces .ipk or .apk depending on CONFIG_APK)
-          - sdk: "24.10.0"
-            label: "24.10"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,7 +60,7 @@ jobs:
         env:
           # ARCH = <target>-<version>; luci-app-bypass is LUCI_PKGARCH:=all so a
           # single x86_64 SDK build produces an arch-independent package.
-          ARCH: "x86_64-${{ matrix.sdk }}"
+          ARCH: "x86_64-24.10.0"
           FEEDNAME: bypass
           FEED_DIR: ${{ github.workspace }}/feed
           PACKAGES: luci-app-bypass
@@ -80,15 +75,14 @@ jobs:
           echo "=== bin/packages tree (diagnostic) ==="
           find bin/packages -type f 2>/dev/null || echo "(no bin/packages)"
           found=0
-          # Accept whichever format the SDK produced (.ipk for 23.05, .ipk or
-          # .apk for 24.10 depending on CONFIG_APK). Tag with the SDK version so
-          # the two jobs' outputs never collide in the release.
+          # Accept whichever format the SDK produced (.ipk by default, .apk when
+          # the 24.10 SDK is built with CONFIG_APK). Keep the original filename
+          # as emitted by the buildroot — no SDK-version suffix is needed now
+          # that only one OpenWrt version is built.
           for f in $(find bin/packages -type f \( -name "luci-app-bypass*.ipk" -o -name "luci-app-bypass*.apk" \) 2>/dev/null); do
-            base="$(basename "$f")"
-            ext="${base##*.}"
-            cp "$f" "dist/${base%.*}-${{ matrix.sdk }}.${ext}"
+            cp "$f" "dist/$(basename "$f")"
             found=1
-            echo "  collected: $f -> dist/${base%.*}-${{ matrix.sdk }}.${ext}"
+            echo "  collected: $f -> dist/$(basename "$f")"
           done
           [ "$found" = "1" ] || { echo "No package produced; failing"; exit 1; }
           ls -la dist/
@@ -96,7 +90,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.sdk }}
+          name: packages-24.10
           path: dist/*
           if-no-files-found: error
 
