@@ -1,0 +1,119 @@
+name: Build & Release
+
+# Builds the luci-app-bypass package (.ipk on OpenWrt 23.05, .apk on 24.10)
+# using the official OpenWrt SDK via openwrt/gh-action-sdk, then publishes a
+# GitHub release with both packages attached.
+#
+# Triggers:
+#   - push tag v*            -> build + publish release (version = tag w/o 'v')
+#   - workflow_dispatch      -> build + publish release (version = input)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # OpenWrt 23.05 -> opkg/.ipk packages
+          - sdk: "23.05.5"
+            pkg_ext: ipk
+            label: "23.05 (ipk)"
+          # OpenWrt 24.10 -> apk packages
+          - sdk: "24.10.0"
+            pkg_ext: apk
+            label: "24.10 (apk)"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build with OpenWrt SDK
+        uses: openwrt/gh-action-sdk@v8
+        env:
+          # ARCH = <target>-<version>; luci-app-bypass is LUCI_PKGARCH:=all so a
+          # single x86_64 SDK build produces an arch-independent package.
+          ARCH: "x86_64-${{ matrix.sdk }}"
+          FEEDNAME: bypass
+          PACKAGES: luci-app-bypass
+          NO_SHFMT_CHECK: 1
+          NO_REFRESH_CHECK: 1
+
+      - name: Collect built package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # LUCI_PKGARCH:=all packages land under bin/packages/<arch>/<feed>/.
+          echo "=== built ${{ matrix.pkg_ext }} files ==="
+          find bin/packages -type f -name "luci-app-bypass*.${{ matrix.pkg_ext }}" || true
+          found=0
+          for f in $(find bin/packages -type f -name "luci-app-bypass*.${{ matrix.pkg_ext }}" 2>/dev/null); do
+            base="$(basename "$f")"
+            # Append the SDK tag so ipk and apk never collide in the release.
+            cp "$f" "dist/${base%.${{ matrix.pkg_ext }}}-${{ matrix.sdk }}.${{ matrix.pkg_ext }}"
+            found=1
+          done
+          [ "$found" = "1" ] || { echo "No ${{ matrix.pkg_ext }} produced; failing"; exit 1; }
+          ls -la dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.sdk }}
+          path: dist/*.${{ matrix.pkg_ext }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: packages-*
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -la release-assets/
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: v${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: release-assets/*
