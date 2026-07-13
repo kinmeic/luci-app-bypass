@@ -26,6 +26,18 @@ uci -q delete bypass.@global[0].localhost_proxy
 	uci -q set bypass.@global[0].naive_egress_table='20200'
 uci -q get bypass.@global[0].naive_egress_rule_priority >/dev/null 2>&1 || \
 	uci -q set bypass.@global[0].naive_egress_rule_priority='900'
+uci -q get bypass.@global[0].dns2socks_file >/dev/null 2>&1 || \
+	uci -q set bypass.@global[0].dns2socks_file='/usr/bin/dns2socks'
+uci -q commit bypass
+
+# Align the historical five-second default with the current UI default while
+# preserving installations where the user deliberately chose another value.
+[ "$(uci -q get bypass.@global_delay[0].start_delay)" = "5" ] && \
+	uci -q set bypass.@global_delay[0].start_delay='60'
+uci -q get bypass.@global_forwarding[0].ipv6_tproxy >/dev/null 2>&1 || \
+	uci -q set bypass.@global_forwarding[0].ipv6_tproxy='0'
+uci -q get bypass.@global_forwarding[0].force_proxy_lan_ip >/dev/null 2>&1 || \
+	uci -q set bypass.@global_forwarding[0].force_proxy_lan_ip='0'
 uci -q commit bypass
 
 # Make the helper scripts executable.

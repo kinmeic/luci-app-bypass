@@ -30,8 +30,8 @@ return view.extend({
 		return Promise.all([uci.load('bypass'), api('rule_status')]).then(function (res) {
 			var status = res[1] || {};
 			return {
-				geoip: { size: status.geoip_size, mtime: status.geoip_mtime },
-				geosite: { size: status.geosite_size, mtime: status.geosite_mtime }
+				geoip: { size: status.geoip_size, mtime: status.geoip_mtime, path: status.geoip_path },
+				geosite: { size: status.geosite_size, mtime: status.geosite_mtime, path: status.geosite_path }
 			};
 		});
 	},
@@ -70,6 +70,8 @@ return view.extend({
 		o.rmempty = false;
 
 		o = gs.option(form.ListValue, 'update_week_mode', _('Auto Update Mode'));
+		o.default = '';
+		o.rmempty = false;
 		o.value('', _('Disable'));
 		o.value('8', _('Loop Mode'));
 		o.value('7', _('Every day'));
@@ -108,13 +110,14 @@ return view.extend({
 			E('div', {}, _('geoip.dat: %s · %s').format(
 				stats.geoip.size ? String(stats.geoip.size) + ' bytes' : '—',
 				stats.geoip.mtime ? new Date(stats.geoip.mtime * 1000).toLocaleString() : '—'
-			)),
+			) + (stats.geoip.path ? ' · ' + stats.geoip.path : '')),
 			E('div', {}, _('geosite.dat: %s · %s').format(
 				stats.geosite.size ? String(stats.geosite.size) + ' bytes' : '—',
 				stats.geosite.mtime ? new Date(stats.geosite.mtime * 1000).toLocaleString() : '—'
-			)),
+			) + (stats.geosite.path ? ' · ' + stats.geosite.path : '')),
 			E('div', { style: 'margin-top:8px' }, [
 				E('button', {
+					type: 'button',
 					class: 'cbi-button cbi-button-apply',
 					click: function (ev) {
 						var btn = ev.target;
@@ -137,8 +140,7 @@ return view.extend({
 		/* ---- Section 2: shunt_rules (list-first table) ---- */
 		var ss = m.section(form.TableSection, 'shunt_rules',
 			_('Shunt Rule'),
-			E('span', { style: 'color: red' },
-				_('Note the priority: the higher the order, the higher the priority.'))
+			_('Note the priority: the higher the order, the higher the priority.')
 		);
 		ss.addremove = true;
 		ss.anonymous = false;
@@ -171,9 +173,11 @@ return view.extend({
 		o.cfgvalue = function (sid) {
 			var outbound = uci.get('bypass', sid, 'outbound') || '—';
 			var network = uci.get('bypass', sid, 'network') || '';
+			var egress = uci.get('bypass', sid, 'egress_interface') || '';
 			var map = { _direct: _('Direct'), _proxy: _('Proxy (naive)'), _block: _('Block') };
 			var label = map[outbound] || outbound;
 			if (network) label += ' · ' + network.toUpperCase();
+			if (egress) label += ' · ' + _('Egress') + ': ' + egress;
 			return label;
 		};
 

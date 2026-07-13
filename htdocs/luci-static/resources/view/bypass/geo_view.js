@@ -61,11 +61,11 @@ return view.extend({
 		var lookupInput = E('input', {
 			type: 'text',
 			id: 'geoview.lookup',
-			class: 'cbi-input-text',
-			style: 'flex:1;min-width:200px',
+			class: 'password-input cbi-input-text',
 			placeholder: _('Enter a domain or IP')
 		});
 		var lookupBtn = E('button', {
+			type: 'button',
 			id: 'lookup-view_btn',
 			class: 'cbi-button cbi-button-apply'
 		}, _('Query'));
@@ -75,11 +75,11 @@ return view.extend({
 		var extractInput = E('input', {
 			type: 'text',
 			id: 'geoview.extract',
-			class: 'cbi-input-text',
-			style: 'flex:1;min-width:200px',
+			class: 'password-input cbi-input-text',
 			placeholder: 'geoip:cn / geosite:gfw'
 		});
 		var extractBtn = E('button', {
+			type: 'button',
 			id: 'extract-view_btn',
 			class: 'cbi-button cbi-button-apply'
 		}, _('Query'));

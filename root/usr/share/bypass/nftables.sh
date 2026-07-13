@@ -29,6 +29,8 @@ load_standalone_config() {
 	UDP_NO_REDIR_PORTS=$(config_t_get global_forwarding udp_no_redir_ports disable)
 	TCP_REDIR_PORTS=$(config_t_get global_forwarding tcp_redir_ports 1:65535)
 	UDP_REDIR_PORTS=$(config_t_get global_forwarding udp_redir_ports 1:65535)
+	PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)
+	FORCE_PROXY_LAN_IP=$(config_t_get global_forwarding force_proxy_lan_ip 0)
 	CLIENT_PROXY=$(config_t_get global client_proxy 1)
 }
 
@@ -80,19 +82,44 @@ nft_start() {
 	# naive upstream builds support redir everywhere; tproxy only in builds
 	# compiled with it. Treat anything other than tproxy as redirect.
 	[ "$mode" = "tproxy" ] || mode=redirect
+	# IPv6 transparent proxying is only possible through TPROXY. Enabling it
+	# therefore moves the shared IPv4 listener to TPROXY as well.
+	[ "$PROXY_IPV6" = "1" ] && mode=tproxy
 
 	# Sets shared with chinadns-ng (filled at runtime). Keep router-local
 	# addresses in a set as well so management traffic is never intercepted.
-	local sets local_elements="" local_ip
+	local sets local_elements="" local6_elements="" local_ip
 	for local_ip in $(ip -o -4 addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1); do
 		local_elements="${local_elements:+$local_elements, }$local_ip"
 	done
 	[ -n "$local_elements" ] || local_elements=127.0.0.1
+	for local_ip in $(ip -o -6 addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1); do
+		local6_elements="${local6_elements:+$local6_elements, }$local_ip"
+	done
+	[ -n "$local6_elements" ] || local6_elements=::1
 	sets=$(cat <<EOF
 table inet ${NFT_TABLE} {
 	set bypass_local {
 		type ipv4_addr
 		elements = { ${local_elements} }
+	}
+	set bypass_local6 {
+		type ipv6_addr
+		elements = { ${local6_elements} }
+	}
+	set bypass_lan {
+		type ipv4_addr
+		flags interval
+		elements = { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 }
+	}
+	set bypass_lan6 {
+		type ipv6_addr
+		flags interval
+		elements = { fc00::/7 }
+	}
+	set bypass_dns {
+		type ipv4_addr
+		size 32
 	}
 	set bypass_chn {
 		type ipv4_addr
@@ -116,47 +143,59 @@ EOF
 )
 
 	local wan_accept="" wan_devices="" dev
-	for dev in $(ip -o -4 route show default 2>/dev/null | awk '{ for (i=1; i<=NF; i++) if ($i == "dev") print $(i+1) }' | sort -u); do
+	for dev in $({ ip -o -4 route show default; ip -o -6 route show default; } 2>/dev/null | awk '{ for (i=1; i<=NF; i++) if ($i == "dev") print $(i+1) }' | sort -u); do
 		wan_devices="${wan_devices:+$wan_devices, }\"$dev\""
 	done
 	[ -n "$wan_devices" ] && wan_accept="iifname { ${wan_devices} } accept"
 	# BypassCore, not the firewall approximation, owns all live shunt decisions.
 	local china_accept=""
 
-	local nat_chain="" mangle_chain=""
+	local lan_accept="" lan6_accept=""
+	if [ "$FORCE_PROXY_LAN_IP" != "1" ]; then
+		lan_accept="ip daddr @bypass_lan accept"
+		lan6_accept="ip6 daddr @bypass_lan6 accept"
+	fi
+
+	local nat_chain="" mangle_chain="" mangle6_chain=""
 	# Redirect mode: NAT PREROUTING REDIRECT for TCP.
 	if [ "$CLIENT_PROXY" = "1" ] && [ "$mode" = "redirect" ] && [ -n "$tcp_expr" ]; then
 		nat_chain="chain prerouting { type nat hook prerouting priority -100; policy accept;
 			ip daddr @bypass_vps accept
 			${china_accept}
 			ip daddr @bypass_local accept
+			${lan_accept}
+			ip daddr @bypass_dns meta l4proto { tcp, udp } th dport 53 accept
 			${wan_accept}
 			iif lo accept
 			${tcp_no_expr:+meta l4proto tcp tcp dport { ${tcp_no_expr} } accept}
 			meta l4proto tcp tcp dport { ${tcp_expr} } redirect to :${REDIR_PORT}
 		}"
 	fi
-	# TProxy mode: mangle PREROUTING TPROXY for TCP+UDP (needs the local-route setup).
-	if [ "$CLIENT_PROXY" = "1" ] && [ "$mode" = "tproxy" ]; then
+	# TProxy mode: mangle PREROUTING TPROXY for TCP. NaiveProxy's SOCKS5
+	# listener rejects UDP ASSOCIATE, so UDP must remain direct.
+	if [ "$CLIENT_PROXY" = "1" ] && [ "$mode" = "tproxy" ] && [ -n "$tcp_expr" ]; then
 		[ -n "$tcp_expr" ] && mangle_chain="chain prerouting { type filter hook prerouting priority mangle; policy accept;
 			ip daddr @bypass_vps accept
 			${china_accept}
 			ip daddr @bypass_local accept
+			${lan_accept}
+			ip daddr @bypass_dns meta l4proto { tcp, udp } th dport 53 accept
 			${wan_accept}
 			iif lo accept
 			${tcp_no_expr:+meta l4proto tcp tcp dport { ${tcp_no_expr} } accept}
 			meta l4proto tcp tcp dport { ${tcp_expr} } tproxy ip to 127.0.0.1:${REDIR_PORT} meta mark set meta mark | 0x10000 accept
 		}"
-		[ -n "$udp_expr" ] && mangle_chain="${mangle_chain}
-		chain prerouting_udp { type filter hook prerouting priority mangle; policy accept;
-			ip daddr @bypass_vps accept
-			${china_accept}
-			ip daddr @bypass_local accept
-			${wan_accept}
-			iif lo accept
-			${udp_no_expr:+meta l4proto udp udp dport { ${udp_no_expr} } accept}
-			meta l4proto udp udp dport { ${udp_expr} } tproxy ip to 127.0.0.1:${REDIR_PORT} meta mark set meta mark | 0x10000 accept
-		}"
+		if [ "$PROXY_IPV6" = "1" ]; then
+			[ -n "$tcp_expr" ] && mangle6_chain="chain prerouting6_tcp { type filter hook prerouting priority mangle; policy accept;
+				ip6 daddr @bypass_vps6 accept
+				ip6 daddr @bypass_local6 accept
+				${lan6_accept}
+				${wan_accept}
+				iif lo accept
+				${tcp_no_expr:+meta l4proto tcp tcp dport { ${tcp_no_expr} } accept}
+				meta l4proto tcp tcp dport { ${tcp_expr} } tproxy ip6 to [::1]:${REDIR_PORT} meta mark set meta mark | 0x10000 accept
+			}"
+		fi
 		# Preserve mwan3/PBR marks in the low bits and reserve one high bit only.
 		while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
 		ip rule add priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null || {
@@ -168,30 +207,62 @@ EOF
 			log 0 "Could not install the TPROXY local route."
 			return 1
 		}
+		if [ "$PROXY_IPV6" = "1" ]; then
+			while ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null; do :; done
+			ip -6 rule add priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null || {
+				while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+				ip route flush table 20100 proto 99 2>/dev/null
+				log 0 "Could not install the IPv6 TPROXY policy rule."
+				return 1
+			}
+			ip -6 route replace local ::/0 dev lo proto 99 table 20101 2>/dev/null || {
+				ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null
+				while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+				ip route flush table 20100 proto 99 2>/dev/null
+				log 0 "Could not install the IPv6 TPROXY local route."
+				return 1
+			}
+		fi
 	fi
 
 	local ruleset="${sets}
 	${nat_chain}
 	${mangle_chain}
+	${mangle6_chain}
 	}"
 	nft_apply "$ruleset" || {
 		while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
 		ip route flush table 20100 proto 99 2>/dev/null
+		while ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null; do :; done
+		ip -6 route flush table 20101 proto 99 2>/dev/null
 		log 0 "nft ruleset apply failed."
 		return 1
 	}
 
 	# Pre-populate bypass_vps with every node server IP (literal or resolved),
-	# otherwise the transparent OUTPUT rule can proxy the proxy's own tunnel.
-	local ip node address
+	# so a future router-OUTPUT implementation cannot recurse into the tunnel.
+	local ip node address direct_dns
 	for node in $(uci -q show "$CONFIG" 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=nodes$/\1/p'); do
 		address=$(config_n_get "$node" address)
 		for ip in $(resolve_all_ipv4 "$address"); do
 			[ -n "$ip" ] && $NFT add element inet ${NFT_TABLE} bypass_vps "{ $ip }" 2>/dev/null
 		done
+		for ip in $(resolve_all_ipv6 "$address"); do
+			[ -n "$ip" ] && $NFT add element inet ${NFT_TABLE} bypass_vps6 "{ $ip }" 2>/dev/null
+		done
 	done
 	for ip in $(get_wan_ips ip4); do
 		$NFT add element inet ${NFT_TABLE} bypass_vps "{ $ip }" 2>/dev/null
+	done
+	for ip in $(get_wan_ips ip6); do
+		$NFT add element inet ${NFT_TABLE} bypass_vps6 "{ $ip }" 2>/dev/null
+	done
+	direct_dns=$(get_direct_dns_ipv4)
+	[ -n "$direct_dns" ] || direct_dns=223.5.5.5
+	for ip in $direct_dns; do
+		if $NFT add element inet ${NFT_TABLE} bypass_dns "{ $ip }" 2>/dev/null; then
+			log 1 "Add direct IPv4 DNS to whitelist: %s" "$ip"
+		fi
 	done
 
 	nft_gen_include
@@ -202,6 +273,8 @@ nft_stop() {
 	# Remove tproxy local-route scaffolding if present.
 	while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
 	ip route flush table 20100 proto 99 2>/dev/null
+	while ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null; do :; done
+	ip -6 route flush table 20101 proto 99 2>/dev/null
 	[ -n "$NFT" ] && $NFT delete table inet ${NFT_TABLE} 2>/dev/null
 	rm -f "$INCLUDE_FILE" 2>/dev/null
 	log 0 "nftables ruleset removed."
@@ -224,6 +297,8 @@ nft_update_wan_sets() {
 	local wan
 	wan=$(get_wan_ips ip4)
 	[ -n "$wan" ] && $NFT add element inet ${NFT_TABLE} bypass_vps "{ $wan }" 2>/dev/null
+	wan=$(get_wan_ips ip6)
+	[ -n "$wan" ] && $NFT add element inet ${NFT_TABLE} bypass_vps6 "{ $wan }" 2>/dev/null
 }
 
 # Dispatch (app.sh sources this file then calls $1, or we dispatch on $1 directly).

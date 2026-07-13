@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-bypass
-PKG_VERSION:=1.3.3
+PKG_VERSION:=1.3.4
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)
 PKG_LICENSE:=MIT
@@ -16,6 +16,7 @@ PKG_MAINTAINER:=Eugene Chan
 PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG \
+	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Dns2socks \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Geoview \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_V2ray_Geo \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Tcping
@@ -42,6 +43,11 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy
 config PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
 	bool "Include ChinaDNS-NG (split DNS)"
 	select PACKAGE_chinadns-ng
+	default n
+
+config PACKAGE_$(PKG_NAME)_INCLUDE_Dns2socks
+	bool "Include DNS2SOCKS (remote DNS through Naive)"
+	select PACKAGE_dns2socks
 	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Geoview

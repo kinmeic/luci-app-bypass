@@ -44,6 +44,7 @@ return view.extend({
 		}
 
 		var clearBtn = E('button', {
+			type: 'button',
 			class: 'cbi-button cbi-button-remove',
 			click: function () {
 				api('clear_log').then(function () {

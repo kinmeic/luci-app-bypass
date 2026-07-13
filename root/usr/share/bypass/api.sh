@@ -23,9 +23,10 @@ emit() {
 #             bypasscore_linux_elf, use_tables, egress_iface, redir_port }
 do_status() {
 	get_config
-	local naive_present=0 chinadns_present=0 bypasscore_present=0 elf=0 running=0
+	local naive_present=0 chinadns_present=0 dns2socks_present=0 bypasscore_present=0 elf=0 running=0
 	[ -n "$NAIVE_BIN" ] && naive_present=1
 	[ -n "$CHINADNS_BIN" ] && chinadns_present=1
+	[ -n "$DNS2SOCKS_BIN" ] && dns2socks_present=1
 	[ -x "$BYPASSCORE_FILE" ] && bypasscore_present=1
 	is_linux_elf "$BYPASSCORE_FILE" 2>/dev/null && elf=1
 	# BypassCore is the service: helper processes alone do not mean RUNNING.
@@ -39,6 +40,7 @@ do_status() {
 	json_add_int running "$running"
 	json_add_int naive_present "$naive_present"
 	json_add_int chinadns_present "$chinadns_present"
+	json_add_int dns2socks_present "$dns2socks_present"
 	json_add_int bypasscore_present "$bypasscore_present"
 	json_add_int bypasscore_linux_elf "$elf"
 	json_add_string use_tables "$use_tables"
@@ -173,16 +175,16 @@ do_rule_update() {
 
 # rule_status -> configured GeoData file sizes and modification times.
 do_rule_status() {
-	local asset_dir geoip geosite
-	asset_dir=$(config_t_get global_rules v2ray_location_asset /usr/share/v2ray/)
-	asset_dir="${asset_dir%*/}"
-	geoip="$asset_dir/geoip.dat"
-	geosite="$asset_dir/geosite.dat"
+	local geoip geosite
+	geoip=$(get_geo_asset_path geoip)
+	geosite=$(get_geo_asset_path geosite)
 	json_init
 	json_add_int geoip_size "$([ -f "$geoip" ] && stat -c %s "$geoip" 2>/dev/null || echo 0)"
 	json_add_int geoip_mtime "$([ -f "$geoip" ] && stat -c %Y "$geoip" 2>/dev/null || echo 0)"
 	json_add_int geosite_size "$([ -f "$geosite" ] && stat -c %s "$geosite" 2>/dev/null || echo 0)"
 	json_add_int geosite_mtime "$([ -f "$geosite" ] && stat -c %Y "$geosite" 2>/dev/null || echo 0)"
+	json_add_string geoip_path "$geoip"
+	json_add_string geosite_path "$geosite"
 	emit
 }
 
@@ -211,9 +213,11 @@ do_clear_log() {
 do_interfaces() {
 	json_init
 	json_add_array interfaces
-	local iface
-	for iface in $(ubus call network.interface.dump 2>/dev/null | \
-		jsonfilter -e '@.interface[*].interface' 2>/dev/null); do
+	local iface interfaces
+	interfaces=$(uci -q show network 2>/dev/null | sed -n 's/^network\.\([^.=]*\)=interface$/\1/p')
+	interfaces="${interfaces}
+$(ubus call network.interface dump 2>/dev/null | jsonfilter -e '@.interface[*].interface' 2>/dev/null)"
+	for iface in $(printf '%s\n' "$interfaces" | awk 'NF && !seen[$0]++' | sort); do
 		[ -n "$iface" ] && [ "$iface" != "loopback" ] && json_add_string '' "$iface"
 	done
 	json_close_array
@@ -278,12 +282,10 @@ geo_rules_for_value() {
 
 do_geo_view() {
 	local action=$1 value=$2
-	local bin geo_dir geoip_path geosite_path
+	local bin geoip_path geosite_path
 	bin=$(first_type "$(config_t_get global_app geoview_file /usr/bin/geoview)" geoview)
-	geo_dir=$(config_t_get global_rules v2ray_location_asset /usr/share/v2ray/)
-	geo_dir="${geo_dir%*/}"
-	geoip_path="${geo_dir}/geoip.dat"
-	geosite_path="${geo_dir}/geosite.dat"
+	geoip_path=$(get_geo_asset_path geoip)
+	geosite_path=$(get_geo_asset_path geosite)
 	json_init
 	if [ -z "$bin" ]; then
 		json_add_int code -1
@@ -315,7 +317,7 @@ do_geo_view() {
 			local tmp line rules
 			tmp=$(mktemp -d 2>/dev/null)
 			if [ -n "$tmp" ]; then
-				printf '%s\n' "$out" | tr '[:upper:]' '[:lower:]' | while IFS= read -r line; do
+				printf '%s\n' "$out" | awk '{ print tolower($0) }' | while IFS= read -r line; do
 					[ -n "$line" ] || continue
 					printf '%s:%s\n' "$geo_type" "$line" >> "$tmp/output"
 					geo_rules_for_value "$line" "$geo_type" >> "$tmp/rules"

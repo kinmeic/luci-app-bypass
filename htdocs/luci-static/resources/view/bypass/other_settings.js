@@ -39,6 +39,8 @@ return view.extend({
 
 		o = sDelay.option(form.Value, 'start_delay', _('Delay Start'), _('Units: seconds.'));
 		o.datatype = 'uinteger';
+		o.default = '60';
+		o.placeholder = '60';
 
 		// Scheduled stop / start / restart: week_mode + time_mode + interval_mode.
 		var verbs = ['stop', 'start', 'restart'];
@@ -91,7 +93,7 @@ return view.extend({
 		o.value('1:65535', _('All'));
 
 		o = sFwd.option(form.Value, 'udp_no_redir_ports', _('UDP No Redir Ports'),
-			E('span', { style: 'color:red' }, _('Fill in the ports you don\'t want to be forwarded by the agent, with the highest priority.')));
+			_('Fill in the ports you don\'t want to be forwarded by the agent, with the highest priority.'));
 		o.value('disable', _('No patterns are used'));
 		o.validate = validatePortList;
 		o.value('1:65535', _('All'));
@@ -105,10 +107,31 @@ return view.extend({
 		o = sFwd.option(form.Value, 'udp_redir_ports', _('UDP Redir Ports'));
 		o.validate = validatePortList;
 		o.value('1:65535', _('All'));
+		o.description = _('NaiveProxy does not support SOCKS5 UDP ASSOCIATE. UDP traffic remains direct in this Naive-only project.');
+
+		o = sFwd.option(form.DummyValue, '_port_tips', ' ');
+		o.rawhtml = true;
+		o.cfgvalue = function () {
+			return E('span', { style: 'color:red' }, [
+				_('The port settings support single ports and ranges.'), E('br'),
+				_('Separate multiple ports with commas (,).'), E('br'),
+				_('Example: 21,80,443,1000:2000.')
+			]);
+		};
 
 		o = sFwd.option(form.ListValue, 'tcp_proxy_way', _('TCP Proxy way'));
 		o.value('redirect', _('REDIRECT'));
 		o.value('tproxy', _('TPROXY'));
+
+		o = sFwd.option(form.Flag, 'ipv6_tproxy', _('IPv6 TProxy'),
+			_('Experimental feature. Make sure that your node supports IPv6.'));
+		o.default = '0';
+		o.rmempty = false;
+
+		o = sFwd.option(form.Flag, 'force_proxy_lan_ip', _('Force Proxy LAN IP'),
+			_('When enabled, traffic whose destination is another LAN address is also sent to the transparent proxy instead of being excluded as local traffic.'));
+		o.default = '0';
+		o.rmempty = false;
 
 		return m.render();
 	}

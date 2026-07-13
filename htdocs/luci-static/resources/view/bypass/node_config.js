@@ -41,10 +41,6 @@ return view.extend({
 		o = s.option(form.Value, 'remarks', _('Remarks'));
 		o.rmempty = false;
 
-		o = s.option(form.ListValue, 'type', _('Type'));
-		o.value('NaiveProxy', 'NaiveProxy');
-		o.description = _('Only NaiveProxy (https) is supported in this build.');
-
 		o = s.option(form.Value, 'address', _('Address (server)'));
 		o.description = _('Domain or IP of the NaiveProxy server.');
 		o.datatype = 'host';

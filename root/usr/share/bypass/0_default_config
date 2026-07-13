@@ -15,6 +15,7 @@ config global
 	option bypasscore_file '/usr/bin/bypasscore'
 	option naive_file '/usr/bin/naive'
 	option chinadns_file '/usr/bin/chinadns-ng'
+	option dns2socks_file '/usr/bin/dns2socks'
 	# Default egress interface for the naive -> server connection (empty = system
 	# default route). Per-node 'egress_interface' overrides this.
 	option default_egress_interface ''
@@ -22,6 +23,8 @@ config global
 	option naive_egress_rule_priority '900'
 
 config global_forwarding
+	option ipv6_tproxy '0'
+	option force_proxy_lan_ip '0'
 	option tcp_no_redir_ports 'disable'
 	option udp_no_redir_ports 'disable'
 	option tcp_redir_ports '22,25,53,80,143,443,465,587,853,873,993,995,5222,8080,8443,9418'
@@ -60,7 +63,7 @@ config global_app
 	option geoview_file '/usr/bin/geoview'
 
 config global_delay
-	option start_delay '5'
+	option start_delay '60'
 	option stop_week_mode ''
 	option start_week_mode ''
 	option restart_week_mode ''

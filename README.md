@@ -7,6 +7,7 @@ OpenWrt 上的网关级透明分流代理。把三个各司其职的组件组合
 | **BypassCore** | **必需分流核心**：透明入口、规则匹配、路由决策与 outbound | 实时数据面核心 |
 | **naiveproxy** | Naive HTTPS 协议适配器，为 BypassCore 提供本机 SOCKS 上游 | 节点连接 |
 | **ChinaDNS-NG** | DNS 分流（国内域名 → 国内 DNS；国外域名 → 远程 DNS） | DNS 转发 |
+| **dns2socks** | 可选：把 ChinaDNS-NG 的国外 DNS 请求送入 Naive SOCKS 隧道 | 国外 DNS 防泄漏 |
 
 数据面仅依赖 **nftables (fw4)**；前端为现代 LuCI **JavaScript** 视图（**无 Lua 运行时**）。
 
@@ -32,14 +33,14 @@ BypassCore (redirect/tproxy://127.0.0.1:<REDIR_PORT>)
 
 DNS:  dnsmasq :53 → ChinaDNS-NG :<dns_port>
        china-dns  = 国内 DNS   (国内域名 → 国内 IP → 直连)
-       trust-dns  = 远程 DNS   (国外域名 → 国外 IP → 代理)
+       trust-dns  = 远程 DNS   (安装 dns2socks 时经 Naive SOCKS)
        add-tagchn-ip → nftset `bypass_chn`  (运行时由 chinadns-ng 填充)
        group vpslist → nftset `bypass_vps`  (节点服务器 IP → 永远直连)
 
 出口接口 (NaiveProxy→服务器走指定逻辑网络)：
   netifd 解析 wan/wan1/usbwan → 实时 L3 设备、地址、网关
-  解析 Naive 服务器 IPv4 → ip rule to <SERVER>/32 lookup <TABLE>
-  ip route table <TABLE>: default via <runtime-gateway> dev <l3-device>
+  解析 Naive 服务器 IPv4/IPv6 → ip rule to <SERVER> lookup <TABLE>
+  ip/ip -6 route table <TABLE>: default via <runtime-gateway> dev <l3-device>
 ```
 
 - 出口接口有 **全局默认** + **节点级覆盖**；服务器 IP 变更时在启动 / 规则更新 / hotplug 时重新解析。
@@ -53,6 +54,7 @@ DNS:  dnsmasq :53 → ChinaDNS-NG :<dns_port>
 - 硬依赖：`curl ip-full resolveip libubox coreutils-nohup coreutils-timeout nftables kmod-nft-nat kmod-nft-tproxy kmod-nft-socket`
 - `INCLUDE_NaiveProxy` → `naiveproxy`（受架构限制，排除 mips/mips64 等）
 - `INCLUDE_ChinaDNS_NG` → `chinadns-ng`
+- `INCLUDE_Dns2socks` → `dns2socks`（让国外 DNS 经 Naive；来自 Passwall packages feed）
 - `INCLUDE_Geoview` → `geoview`
 - `INCLUDE_V2ray_Geo` → `v2ray-geoip` + `v2ray-geosite`
 - `INCLUDE_Tcping` → `tcping`
@@ -78,8 +80,9 @@ opkg install luci-app-bypass_*.ipk
 
 安装后：
 1. 安装 BypassCore：从 <https://github.com/kinmeic/BypassCore/releases> 下载对应架构的 OpenWrt 包（`bypasscore-openwrt-*.tar.gz`），解出 `bypasscore` 放到 `/usr/bin/bypasscore`（或改 `bypass.global.bypasscore_file`）。
-2. 把 `geoip.dat` / `geosite.dat` 放到 `/usr/share/v2ray/`（或安装 `v2ray-geoip` / `v2ray-geosite`）。
-3. LuCI → 服务 → Bypass，填节点、选出口接口、启用。
+2. 安装 NaiveProxy、ChinaDNS-NG；建议同时安装 `dns2socks`，否则国外 DNS 由 ChinaDNS-NG 直接访问。
+3. 把 `geoip.dat` / `geosite.dat` 放到 `/usr/share/v2ray/`（或安装 `v2ray-geoip` / `v2ray-geosite`，程序会检测包的实际安装目录）。
+4. LuCI → 服务 → Bypass，填节点、选出口接口、启用。
 
 ---
 
@@ -94,6 +97,7 @@ config global
     option bypasscore_file '/usr/bin/bypasscore'
     option naive_file '/usr/bin/naive'
     option chinadns_file '/usr/bin/chinadns-ng'
+    option dns2socks_file '/usr/bin/dns2socks'
     option default_egress_interface 'wan2'   # 空 = 系统默认路由
     option naive_egress_table '20200'
     option naive_egress_rule_priority '900'
@@ -102,6 +106,8 @@ config global_forwarding
     option tcp_proxy_way 'redirect'   # redirect | tproxy
     option tcp_redir_ports '1:65535'
     option udp_redir_ports '1:65535'
+    option ipv6_tproxy '0'
+    option force_proxy_lan_ip '0'
 
 config global_dns
     option domestic_dns 'auto'        # auto = 自动检测运营商 DNS
@@ -119,6 +125,7 @@ config shunt_rules 'China'
     option domain_list 'geosite:cn'
     option ip_list 'geoip:cn'
     option outbound '_direct'         # _direct | _proxy | _block
+    option egress_interface 'wan1'    # 仅 Direct；覆盖默认直连接口
 
 config nodes 'naive1'
     option type 'NaiveProxy'
@@ -148,9 +155,9 @@ luci-app-bypass/
     ├── etc/uci-defaults/luci-bypass  # 首次安装：拷默认配置、防火墙 include、chmod
     ├── etc/hotplug.d/iface/98-bypass # ifup 重启 / ifupdate 刷新
     └── usr/share/bypass/
-        ├── utils.sh                  # 共享库（含出口 fwmark 路由、ELF 校验）
+        ├── utils.sh                  # 共享库（含双栈出口策略路由、ELF 校验）
         ├── app.sh                    # 编排：get_config / run_naive / run_chinadns_ng / gen_bypasscore_config / start/stop
-        ├── nftables.sh               # nft 透明代理 + 出口 mangle 标记
+        ├── nftables.sh               # nft 透明代理、DNS 白名单与 IPv6 TProxy
         ├── rule_update.sh            # 下载校验 geoip/geosite + 重解析出口 IP
         ├── api.sh                    # rpcd file.exec 后端（JSON）
         └── 0_default_config
@@ -180,17 +187,19 @@ NaiveProxy 只负责把所选 HTTPS 节点暴露为本机 SOCKS 上游，供 Byp
 ### 多 WAN 出口
 
 - `default_egress_interface` 选择全局 Naive 服务器出口；每个节点的 `egress_interface` 可单独覆盖。填写的是 OpenWrt 逻辑网络名，如 `wan`、`wan1`、`usbwan`。
-- 程序通过 netifd 运行时状态解析实际 L3 设备、IPv4 地址和网关，兼容 DHCP、PPPoE 与设备名变化。
-- 仅为当前 Naive 服务器解析出的 IPv4 目标添加独立路由表和 `ip rule to ...`。它不改写 fwmark，因此不会覆盖 mwan3/PBR 的标记；规则优先级由 `naive_egress_rule_priority` 控制，默认 900。
-- `direct_egress_interface` 单独控制 BypassCore 的直连分流出口，同样会解析为实时 L3 设备和本机地址。
-- 接口 `ifup`、`ifupdate`、`ifdown` 会重建或撤销对应路由；节点域名解析结果每小时刷新。
+- 程序通过 netifd 运行时状态解析实际 L3 设备与 IPv4/IPv6 网关，兼容 DHCP、PPPoE 与设备名变化。
+- 仅为当前 Naive 服务器解析出的 IPv4/IPv6 目标添加独立路由表和 `ip rule to ...`。它不改写 fwmark，因此不会覆盖 mwan3/PBR 的标记；规则优先级由 `naive_egress_rule_priority` 控制，默认 900。
+- `direct_egress_interface` 控制默认 Direct 出口；每条 Direct 分流规则还可用 `egress_interface` 覆盖，均绑定到 netifd 实时 L3 设备。
+- Proxy 规则共用同一个复用的 Naive 隧道，物理 WAN 在 Node Config（节点覆盖）或 Basic Settings（全局默认）设置，不能在单条 Proxy 规则上再拆分。
+- Naive 出口、默认 Direct 出口及规则级 Direct 出口发生 `ifup`、`ifupdate`、`ifdown` 时都会重建或撤销对应绑定；节点域名解析结果每小时刷新，刷新不完整时服务会失败关闭，避免悄悄改走系统默认 WAN。
 
 ## 已知限制 / 待办
 
-- **UDP 透明代理**：`redirect` 模式只代理 TCP。需要 UDP 时切换到 `tproxy`，由 BypassCore 的 UDP TPROXY listener 处理。
-- **IPv6 数据面**：当前 nftables 透明代理规则只覆盖 IPv4，因此界面不再展示尚未生效的 IPv6/ICMP 开关。
+- **UDP 透明代理**：NaiveProxy 的 SOCKS5 服务明确不支持 UDP ASSOCIATE，因此本项目不拦截 UDP，避免造成 UDP 黑洞。TPROXY 仅用于 TCP（包括可选 IPv6 TCP）。
+- **IPv6 数据面**：启用“IPv6 TProxy”后安装 IPv6 TCP TProxy 链、策略路由与 BypassCore IPv6 listener；节点服务器出口策略本身始终支持双栈。
+- **国外 DNS**：安装 `dns2socks` 且选择 UDP/TCP 国外 DNS 时，ChinaDNS-NG 与 BypassCore 自身的国外查询都会经 Naive SOCKS 隧道访问；未安装或选择 DoT 时会在日志中明确提示国外 DNS 仍为直连。运营商/国内 IPv4 DNS 会加入 nftables 直连白名单。
 - **路由器本机透明代理**：当前不安装 nftables OUTPUT 重定向，因为 BypassCore 尚未给 outbound socket 设置可排除的专用 mark，强行开启会让 direct outbound 递归回核心。路由器本机程序可显式使用节点 SOCKS 端口。
-- **BypassCore 数据面**：`-test` 路由预览严格按规则匹配；实际 nftables/ipset 是基于集合的尽力近似，两者共享同一份规则定义但逐连接语义可能略有差异。
+- **BypassCore 数据面**：nftables 只负责把符合入口条件的 TCP 送入核心；分流规则由 BypassCore 逐连接执行，Direct/Proxy/Block 不再由防火墙近似判断。
 - **未实现**：订阅解析、ACL 规则、haproxy 负载均衡、SOCKS 自动切换、monitor/tasks 守护进程、多语言（目前仅 zh-cn）。
 
 ---

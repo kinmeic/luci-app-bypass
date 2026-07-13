@@ -81,7 +81,18 @@ refresh_uplink_mode() {
 	local node
 	node=$(config_t_get global node)
 	[ -n "$node" ] || return 0
-	refresh_uplink_ips "$node"
+	# Serialize with init start/stop/restart. A failed refresh must not leave
+	# Naive reconnects using the system default WAN after their dedicated rules
+	# were rolled back, so stop the service fail-closed.
+	exec 8>/var/lock/bypass.lock
+	flock -xn 8 || return 0
+	if ! refresh_uplink_ips "$node"; then
+		log 0 "Egress destination refresh failed; stopping Bypass to prevent WAN fallback."
+		${APP_PATH}/app.sh stop
+		flock -u 8
+		return 1
+	fi
+	flock -u 8
 }
 
 case "${1:-update}" in

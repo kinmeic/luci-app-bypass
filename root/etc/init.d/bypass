@@ -7,11 +7,19 @@ STOP=15
 APP_FILE=${APP_PATH}/app.sh
 LOCK_FILE_DIR=/var/lock
 LOCK_FILE=${LOCK_FILE_DIR}/${CONFIG}.lock
+READY_FILE=${LOCK_FILE_DIR}/${CONFIG}_ready.lock
 
 set_lock() {
 	[ ! -d "$LOCK_FILE_DIR" ] && mkdir -p "$LOCK_FILE_DIR"
 	exec 999>"$LOCK_FILE"
-	flock -x -w 10 999
+	# BusyBox flock has no util-linux -w option. Retry non-blocking acquisition
+	# so overlapping LuCI/hotplug restarts serialize without emitting an error.
+	local tries=0
+	while ! flock -xn 999; do
+		tries=$((tries + 1))
+		[ "$tries" -ge 10 ] && return 1
+		sleep 1
+	done
 }
 
 unset_lock() {
@@ -20,13 +28,12 @@ unset_lock() {
 
 boot_func() {
 	local delay
-	delay=$(uci -q get ${CONFIG}.@global_delay[0].start_delay 2>/dev/null || echo 1)
+	delay=$(uci -q get ${CONFIG}.@global_delay[0].start_delay 2>/dev/null || echo 60)
 	[ "$delay" -gt 0 ] 2>/dev/null && {
 		log 0 "Start after a delay of %s seconds." "$delay"
 		sleep "$delay"
 	}
 	restart boot
-	touch ${LOCK_FILE_DIR}/${CONFIG}_ready.lock
 }
 
 boot() {
@@ -34,24 +41,27 @@ boot() {
 }
 
 start() {
-	set_lock || { log 0 "Could not acquire service lock, exit."; exit 1; }
+	set_lock || { log 0 "The service script is already running; skip duplicate start."; return 0; }
 	$APP_FILE start
 	local rc=$?
+	if [ "$rc" = "0" ]; then touch "$READY_FILE"; else rm -f "$READY_FILE"; fi
 	unset_lock
 	return $rc
 }
 
 stop() {
-	set_lock || { log 0 "Could not acquire service lock for stop, exit."; exit 1; }
+	set_lock || { log 0 "Timed out waiting for the service lock; skip duplicate stop."; return 0; }
 	$APP_FILE stop
+	rm -f "$READY_FILE"
 	unset_lock
 }
 
 restart() {
-	set_lock || { log 0 "Could not acquire service lock for restart, exit."; exit 1; }
+	set_lock || { log 0 "The service script is already running; skip duplicate restart."; return 0; }
 	$APP_FILE stop
 	$APP_FILE start $1
 	local rc=$?
+	if [ "$rc" = "0" ]; then touch "$READY_FILE"; else rm -f "$READY_FILE"; fi
 	unset_lock
 	return $rc
 }
