@@ -441,8 +441,8 @@ msgstr "国内分流域名"
 msgid "v2ray rule prefix that selects which domains use the domestic upstream (default geosite:cn)."
 msgstr "v2ray 规则前缀，决定哪些域名使用国内上游（默认 geosite:cn）。"
 
-msgid "BypassCore as transparent core (experimental)"
-msgstr "BypassCore 作为透明代理核心（实验性）"
+msgid "BypassCore as transparent core"
+msgstr "BypassCore 作为透明代理核心"
 
-msgid "0 (default): naiveproxy carries traffic, BypassCore is diagnostic-only. 1: BypassCore runs -run as the transparent proxy core and naiveproxy becomes its SOCKS upstream. Mode 1 needs BypassCore's proxy-mode SOCKS5 dialer (pending upstream) to route \"proxy\" traffic; direct/blackhole work already."
-msgstr "0（默认）：naiveproxy 承载流量，BypassCore 仅做诊断。1：BypassCore 以 -run 作为透明代理核心运行，naiveproxy 降为它的 SOCKS 上游。模式 1 需要 BypassCore 实现 proxy 模式的 SOCKS5 拨号器（上游待补）才能真正分流 \"proxy\" 流量；直连/丢弃已可用。"
+msgid "0 (default): naiveproxy carries traffic, BypassCore is diagnostic-only. 1: BypassCore runs -run as the transparent proxy core (inbound + sniff + route + SOCKS5-to-naiveproxy); naiveproxy becomes its SOCKS upstream. Requires BypassCore with the SOCKS5 dialer + UDP TPROXY listener (commit e60bd1f+)."
+msgstr "0（默认）：naiveproxy 承载流量，BypassCore 仅做诊断。1：BypassCore 以 -run 作为透明代理核心（inbound + sniff + route + SOCKS5 拨到 naiveproxy），naiveproxy 降为它的 SOCKS 上游。需要带 SOCKS5 拨号器 + UDP TPROXY listener 的 BypassCore（commit e60bd1f+）。"

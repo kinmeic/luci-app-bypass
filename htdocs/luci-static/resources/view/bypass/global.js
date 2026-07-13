@@ -51,8 +51,8 @@ return view.extend({
 		o = s.option(form.Flag, 'dns_redirect', _('Redirect dnsmasq to ChinaDNS-NG'));
 		o.rmempty = false;
 
-		o = s.option(form.Flag, 'bypass_as_core', _('BypassCore as transparent core (experimental)'));
-		o.description = _('0 (default): naiveproxy carries traffic, BypassCore is diagnostic-only. 1: BypassCore runs -run as the transparent proxy core and naiveproxy becomes its SOCKS upstream. Mode 1 needs BypassCore\'s proxy-mode SOCKS5 dialer (pending upstream) to route "proxy" traffic; direct/blackhole work already.');
+		o = s.option(form.Flag, 'bypass_as_core', _('BypassCore as transparent core'));
+		o.description = _('0 (default): naiveproxy carries traffic, BypassCore is diagnostic-only. 1: BypassCore runs -run as the transparent proxy core (inbound + sniff + route + SOCKS5-to-naiveproxy); naiveproxy becomes its SOCKS upstream. Requires BypassCore with the SOCKS5 dialer + UDP TPROXY listener (commit e60bd1f+).');
 		o.rmempty = false;
 
 		/* Binaries / paths */

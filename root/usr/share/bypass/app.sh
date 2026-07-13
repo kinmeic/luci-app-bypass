@@ -390,17 +390,24 @@ gen_bypasscore_config() {
 	fi
 
 	# inbounds: only emitted in bypass_as_core mode. BypassCore listens on
-	# REDIR_PORT as a TCP transparent-proxy listener (redirect mode, recovers
-	# the original dst via SO_ORIGINAL_DST) and sniffs TLS/HTTP to recover the
-	# domain. nftables REDIRECT sends traffic here instead of to naiveproxy.
+	# inbounds: only emitted in bypass_as_core mode. BypassCore listens on
+	# REDIR_PORT as a transparent listener; nftables REDIRECT/TPROXY sends
+	# traffic here instead of to naiveproxy. type/network follow tcp_proxy_way:
+	#   redirect -> TCP only (SO_ORIGINAL_DST)
+	#   tproxy   -> TCP + UDP (UDP needs TPROXY/IP_TRANSPARENT)
 	if [ "$BYPASS_AS_CORE" = "1" ]; then
+		local in_type="redirect" in_net="tcp"
+		if [ "$TCP_PROXY_WAY" = "tproxy" ]; then
+			in_type="tproxy"
+			in_net="tcp,udp"
+		fi
 		json_add_array inbounds
 			json_add_object ''
 				json_add_string tag "tcp_redir"
-				json_add_string type "redirect"
+				json_add_string type "$in_type"
 				json_add_string listen "127.0.0.1"
 				json_add_int port "$REDIR_PORT"
-				json_add_string network "tcp"
+				json_add_string network "$in_net"
 				json_add_boolean sniffing 1
 			json_close_object
 		json_close_array

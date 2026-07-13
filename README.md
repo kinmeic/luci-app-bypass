@@ -180,13 +180,12 @@ luci-app-bypass/
 两种模式可切换（UCI `bypass.global.bypass_as_core`）：
 
 - **0（默认，legacy）**：naiveproxy 承载流量（`redir`/`tproxy` 透明监听 + https 出站），BypassCore 仅做诊断（`-test`/`-resolve`/`-observe`）。ChinaDNS-NG 做实时 DNS 分流 + `bypass_chn`/`bypass_vps` nftset 填充。
-- **1（实验性，BypassCore 当分流核心）**：BypassCore 以 `bypasscore -run -c <cfg>` 常驻当透明代理核心（inbound `tcp_redir` + sniff + route），naiveproxy 降为 BypassCore 的 SOCKS 上游（只跑 `socks://127.0.0.1:<node_socks_port>` + https 出站）。生成给 BypassCore 的 config 含 `inbounds` 段。nftables REDIRECT 指向 BypassCore 的 `REDIR_PORT`。
-
-> ⚠️ **模式 1 的前置条件**：BypassCore 的 `proxy` 出站当前是 `blackhole` fallback（`cmd/bypasscore/main.go` 明确 "not yet supported as a dialer"）。要让"分流到代理"这一支生效，需在 BypassCore 侧实现 **proxy 模式的 SOCKS5 拨号器**（拨到本地 naiveproxy 的 socks）。补上前，模式 1 只有 `freedom`（直连）/`blackhole`（丢弃）能用。BypassCore 的 UDP 透明代理（`udp_redir`）和真 TPROXY 也未实现，故模式 1 目前只覆盖 TCP redirect。
+- **1（BypassCore 当分流核心）**：BypassCore 以 `bypasscore -run -c <cfg>` 常驻当透明代理核心（inbound `tcp_redir` + sniff + route + outbound `freedom`/`blackhole`/`proxy`(SOCKS5→naiveproxy)），naiveproxy 降为 BypassCore 的 SOCKS 上游（只跑 `socks://127.0.0.1:<node_socks_port>` + https 出站）。生成给 BypassCore 的 config 含 `inbounds` 段（按 `tcp_proxy_way` 选 `redirect`(TCP) / `tproxy`(TCP+UDP)）。nftables REDIRECT/TPROXY 指向 BypassCore 的 `REDIR_PORT`。
+  - **前置条件已满足**：BypassCore `e60bd1f`+ 已补齐 proxy 模式 SOCKS5 拨号器（`proxy/socks`）+ UDP TPROXY listener（`app/inbound/udp_tproxy_*`）。模式 1 现可完整跑通：直连 / 丢弃 / 经 naiveproxy 代理 三支都通，TCP+UDP（tproxy 模式）都覆盖。
 
 ## 已知限制 / 待办
 
-- **UDP 透明代理**：`redirect` 模式只代理 TCP（naive 的 `redir` 监听；BypassCore 的 inbound 也只 TCP）。需要 UDP 代理时切换到 `tproxy` 模式，且你的 naive 必须是用支持 tproxy 的构建编译的（BypassCore 模式下还需等 BypassCore 实现 UDP `udp_redir` + 真 TPROXY）。
+- **UDP 透明代理**：`redirect` 模式只代理 TCP（naive 的 `redir` 监听；BypassCore legacy 模式的 inbound 也只 TCP）。需要 UDP 代理时切换到 `tproxy` 模式——模式 0 需 naive 用支持 tproxy 的构建编译；模式 1（`bypass_as_core=1`）由 BypassCore 的 UDP TPROXY listener 处理（`tcp_proxy_way=tproxy` 时 inbound network=tcp,udp）。
 - **BypassCore 数据面**：`-test` 路由预览严格按规则匹配；实际 nftables/ipset 是基于集合的尽力近似，两者共享同一份规则定义但逐连接语义可能略有差异。
 - **未实现**：订阅解析、ACL 规则、haproxy 负载均衡、SOCKS 自动切换、monitor/tasks 守护进程、多语言（目前仅 zh-cn）。
 
