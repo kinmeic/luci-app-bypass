@@ -30,16 +30,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # OpenWrt 23.05 -> opkg/.ipk packages
+          # OpenWrt 23.05 SDK (produces .ipk)
           - sdk: "23.05.5"
-            pkg_ext: ipk
-            fallback_ipk: ""
             label: "23.05 (ipk)"
-          # OpenWrt 24.10 -> apk packages (fallback: also accept ipk if SDK emits it)
+          # OpenWrt 24.10 SDK (produces .ipk or .apk depending on CONFIG_APK)
           - sdk: "24.10.0"
-            pkg_ext: apk
-            fallback_ipk: "1"
-            label: "24.10 (apk)"
+            label: "24.10"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,30 +79,26 @@ jobs:
           mkdir -p dist
           echo "=== bin/packages tree (diagnostic) ==="
           find bin/packages -type f 2>/dev/null || echo "(no bin/packages)"
-          echo "=== built ${{ matrix.pkg_ext }} files ==="
-          find bin/packages -type f -name "luci-app-bypass*.${{ matrix.pkg_ext }}" 2>/dev/null || true
           found=0
-          # Also accept .ipk when pkg_ext is apk (some 24.10 SDK builds still emit ipk).
-          for f in $(find bin/packages -type f \( -name "luci-app-bypass*.${{ matrix.pkg_ext }}" -o \( -name "luci-app-bypass*.ipk" -a -n "${{ matrix.fallback_ipk }}" \) \) 2>/dev/null); do
+          # Accept whichever format the SDK produced (.ipk for 23.05, .ipk or
+          # .apk for 24.10 depending on CONFIG_APK). Tag with the SDK version so
+          # the two jobs' outputs never collide in the release.
+          for f in $(find bin/packages -type f \( -name "luci-app-bypass*.ipk" -o -name "luci-app-bypass*.apk" \) 2>/dev/null); do
             base="$(basename "$f")"
             ext="${base##*.}"
             cp "$f" "dist/${base%.*}-${{ matrix.sdk }}.${ext}"
             found=1
+            echo "  collected: $f -> dist/${base%.*}-${{ matrix.sdk }}.${ext}"
           done
-          [ "$found" = "1" ] || { echo "WARNING: No ${{ matrix.pkg_ext }} (or fallback) produced"; ls -la dist/ 2>/dev/null; }
-          # For the known-flaky apk job, do not hard-fail; let upload warn so the
-          # release still publishes whatever was produced.
-          if [ "$found" != "1" ] && [ "${{ matrix.fallback_ipk }}" != "1" ]; then
-            exit 1
-          fi
-          ls -la dist/ 2>/dev/null || true
+          [ "$found" = "1" ] || { echo "No package produced; failing"; exit 1; }
+          ls -la dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.sdk }}
           path: dist/*
-          if-no-files-found: warn
+          if-no-files-found: error
 
   release:
     name: Publish release
