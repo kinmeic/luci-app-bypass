@@ -11,5 +11,6 @@
 # OpenWrt build artifacts
 *.o
 *.ipk
+*.apk
 *.bin
 .tmp/

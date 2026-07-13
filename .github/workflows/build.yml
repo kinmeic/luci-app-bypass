@@ -1,9 +1,19 @@
 name: Build & Release
 
-# Builds the luci-app-bypass package for OpenWrt 24.10 (.ipk, or .apk when the
-# SDK is built with CONFIG_APK) using the official OpenWrt SDK via
-# openwrt/gh-action-sdk, then publishes a GitHub release with the package(s)
-# attached.
+# Builds luci-app-bypass for BOTH OpenWrt packaging systems in parallel:
+#   - 24.10.0  -> .ipk (opkg)  for OpenWrt 24.10 stable & older
+#   - SNAPSHOT -> .apk (apk)   for OpenWrt main snapshot & 25.x+ (apk default)
+# Both are arch-independent (LUCI_PKGARCH:=all), so one x86_64 build per format
+# covers every target. Dependencies and the postinst/prerm scripts are resolved
+# and emitted by each SDK's own buildroot, so each package installs cleanly on
+# its target package manager.
+#
+# Why a matrix and not a repackaged .ipk->.apk: OpenWrt 24.10 explicitly ships
+# opkg (USE_APK is disabled there); apk is the default ONLY on the main branch.
+# A .ipk's Depends (e.g. libubox20240329, libc) and luci.mk-generated postinst
+# are resolved for opkg, so manually re-wrapping them as .apk would carry the
+# wrong dependency names and opkg-only script hooks. Building the .apk with the
+# apk-based (snapshot) SDK lets the buildroot produce a correct .apk instead.
 #
 # Triggers:
 #   - push tag v*            -> build + publish release (version = tag w/o 'v')
@@ -20,17 +30,28 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.1.0)'
+        description: 'Release version (e.g. 1.2.0)'
         required: true
-        default: '1.1.0'
+        default: '1.2.0'
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build (OpenWrt 24.10)
+    name: Build (${{ matrix.label }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # OpenWrt 24.10 stable -> opkg/.ipk
+          - sdk: "24.10.0"
+            label: "24.10 (ipk)"
+          # OpenWrt main snapshot -> apk/.apk (apk is default on main; 24.10
+          # disables USE_APK, so only the snapshot SDK emits .apk)
+          - sdk: "SNAPSHOT"
+            label: "snapshot (apk)"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,14 +74,13 @@ jobs:
             --exclude='.github' \
             --exclude='dist' \
             ./ feed/luci-app-bypass/
-          echo "PKG_NAME=luci-app-bypass" >> "$GITHUB_ENV"
 
       - name: Build with OpenWrt SDK
         uses: openwrt/gh-action-sdk@v8
         env:
           # ARCH = <target>-<version>; luci-app-bypass is LUCI_PKGARCH:=all so a
           # single x86_64 SDK build produces an arch-independent package.
-          ARCH: "x86_64-24.10.0"
+          ARCH: "x86_64-${{ matrix.sdk }}"
           FEEDNAME: bypass
           FEED_DIR: ${{ github.workspace }}/feed
           PACKAGES: luci-app-bypass
@@ -72,32 +92,34 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          echo "=== bin/packages tree (diagnostic) ==="
+          echo "=== bin/packages tree (${{ matrix.label }}) ==="
           find bin/packages -type f 2>/dev/null || echo "(no bin/packages)"
           found=0
-          # Accept whichever format the SDK produced (.ipk by default, .apk when
-          # the 24.10 SDK is built with CONFIG_APK). Keep the original filename
-          # as emitted by the buildroot — no SDK-version suffix is needed now
-          # that only one OpenWrt version is built.
+          # Accept whichever format the SDK produced: 24.10 -> .ipk,
+          # SNAPSHOT -> .apk. Keep the original buildroot filename — .ipk and
+          # .apk use different naming + extensions, so there is no collision
+          # when the release job merges both artifacts.
           for f in $(find bin/packages -type f \( -name "luci-app-bypass*.ipk" -o -name "luci-app-bypass*.apk" \) 2>/dev/null); do
             cp "$f" "dist/$(basename "$f")"
             found=1
             echo "  collected: $f -> dist/$(basename "$f")"
           done
-          [ "$found" = "1" ] || { echo "No package produced; failing"; exit 1; }
+          [ "$found" = "1" ] || { echo "No package produced for ${{ matrix.label }}; failing"; exit 1; }
           ls -la dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: packages-24.10
+          name: packages-${{ matrix.sdk }}
           path: dist/*
           if-no-files-found: error
 
   release:
     name: Publish release
+    # Only publish once BOTH formats built successfully — no half-releases.
+    # (fail-fast:false above keeps a single matrix failure from cancelling the
+    # other; if either still fails, this job is skipped so we can fix and retag.)
     needs: build
-    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
