@@ -73,8 +73,21 @@ nft_import_elements() {
 	unique="${input}.unique"
 	batch="${input}.nft"
 	[ -s "$input" ] || return 0
-	sort -u "$input" > "$unique" || return 1
+	# Drop anything that is not a valid IPv4/IPv6 address or CIDR. Mirrors the
+	# passwall2 defence-in-depth: a fused record such as "223.255.252.0/230.0.0.0/8"
+	# (two CIDRs with no separating newline) fails the single-/ rule and is
+	# discarded before it can abort "nft -f". Octet range and prefix length are
+	# left to nft; this is structural filtering only. The IPv6 branch matches
+	# compressed forms (::) because it only requires hex groups, colons and an
+	# optional prefix length; at least two colons are enforced by the ":.*:" grep.
+	{ grep -E '^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?$' "$input" 2>/dev/null; \
+	  grep -iE '^[0-9a-f:]+(/[0-9]{1,3})?$' "$input" 2>/dev/null | grep ':.*:'; } \
+		| sort -u > "$unique" || return 1
 	awk -v table="$NFT_TABLE" -v set_name="$set_name" '
+		# Treat any run of whitespace as a record separator (passwall2 style) so
+		# splitting never depends on a trailing newline: even if grep lets a line
+		# through whose final newline is missing, it cannot fuse with the next one.
+		BEGIN { RS = "[ \t\n\r]+" }
 		NF {
 			gsub(/\r/, "")
 			# BusyBox awk commonly limits one output record to about 4 KiB. Keep
