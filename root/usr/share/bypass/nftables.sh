@@ -77,11 +77,10 @@ nft_import_elements() {
 	# passwall2 defence-in-depth: a fused record such as "223.255.252.0/230.0.0.0/8"
 	# (two CIDRs with no separating newline) fails the single-/ rule and is
 	# discarded before it can abort "nft -f". Octet range and prefix length are
-	# left to nft; this is structural filtering only. The IPv6 branch matches
-	# compressed forms (::) because it only requires hex groups, colons and an
-	# optional prefix length; at least two colons are enforced by the ":.*:" grep.
-	{ grep -E '^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?$' "$input" 2>/dev/null; \
-	  grep -iE '^[0-9a-f:]+(/[0-9]{1,3})?$' "$input" 2>/dev/null | grep ':.*:'; } \
+	# left to nft; this is structural filtering only. The IPv6 branch accepts
+	# compressed forms (::, ::1, 2001:db8::/32) and IPv4-mapped tails (::ffff:1.2.3.4)
+	# because it allows hex groups, colons and dots with an optional /prefix.
+	grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$|^([0-9A-Fa-f]{1,4}:)+[0-9A-Fa-f:.]*(/[0-9]{1,3})?$|^[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*(/[0-9]{1,3})?$' "$input" \
 		| sort -u > "$unique" || return 1
 	awk -v table="$NFT_TABLE" -v set_name="$set_name" '
 		# Treat any run of whitespace as a record separator (passwall2 style) so
