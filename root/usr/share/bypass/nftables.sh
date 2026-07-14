@@ -164,7 +164,7 @@ EOF
 		log 0 "Direct interface binding is configured; keeping direct DNS/GeoIP matches inside BypassCore so the selected interface is honored."
 	fi
 
-	local nat_chain="" mangle_chain="" mangle6_chain="" tcp_redirect_rule="" icmp_redirect_rule="" dns_redirect_rule="" dns_tproxy_bypass=""
+	local nat_chain="" mangle_chain="" mangle6_chain="" tcp_redirect_rule="" icmp_redirect_rule="" dns_redirect_rule="" dns_tproxy_bypass="" tcp_no_redir_rule=""
 	# REDIRECT mode uses NAT PREROUTING for TCP. ICMP hijacking is implemented
 	# in the same NAT base chain and makes the router answer matching IPv4 pings,
 	# matching Passwall2's nftables behavior without sending ICMP to BypassCore.
@@ -176,6 +176,11 @@ EOF
 	if [ "$CLIENT_PROXY" = "1" ] && [ "$ACCEPT_ICMP" = "1" ]; then
 		icmp_redirect_rule="ip protocol icmp redirect"
 	fi
+	# Build the no-redirect exclusion rule as a standalone variable. The port-set
+	# braces must not be embedded inside a ${var:+...} expansion: ash/dash (and
+	# bash) close the expansion at the first '}' after the nested ${...}, leaving
+	# a dangling "accept}" that breaks the nft ruleset.
+	[ -n "$tcp_no_expr" ] && tcp_no_redir_rule="meta l4proto tcp tcp dport { ${tcp_no_expr} } accept"
 	if [ "$CLIENT_PROXY" = "1" ] && [ "$DNS_REDIRECT" = "1" ]; then
 		# Match Passwall2's DNS Redirect semantics: LAN clients using a hardcoded
 		# port-53 resolver are sent to the router's dnsmasq, whose upstream is the
@@ -194,7 +199,7 @@ EOF
 			${direct_dns_accept}
 			${lan_accept}
 			ip daddr @bypass_dns meta l4proto { tcp, udp } th dport 53 accept
-			${tcp_no_expr:+meta l4proto tcp tcp dport { ${tcp_no_expr} } accept}
+			${tcp_no_redir_rule}
 			${tcp_redirect_rule}
 			${icmp_redirect_rule}
 		}"
@@ -211,7 +216,7 @@ EOF
 			${wan_accept}
 			iif lo accept
 			${dns_tproxy_bypass}
-			${tcp_no_expr:+meta l4proto tcp tcp dport { ${tcp_no_expr} } accept}
+			${tcp_no_redir_rule}
 			meta nfproto ipv4 meta l4proto tcp tcp dport { ${tcp_expr} } tproxy ip to 127.0.0.1:${REDIR_PORT} meta mark set meta mark | 0x10000 accept
 		}"
 		if [ "$PROXY_IPV6" = "1" ]; then
@@ -223,7 +228,7 @@ EOF
 				${wan_accept}
 				iif lo accept
 				${dns_tproxy_bypass}
-				${tcp_no_expr:+meta l4proto tcp tcp dport { ${tcp_no_expr} } accept}
+				${tcp_no_redir_rule}
 				meta l4proto tcp tcp dport { ${tcp_expr} } tproxy ip6 to [::1]:${REDIR_PORT} meta mark set meta mark | 0x10000 accept
 			}"
 		fi
