@@ -77,7 +77,9 @@ nft_import_elements() {
 	awk -v table="$NFT_TABLE" -v set_name="$set_name" '
 		NF {
 			gsub(/\r/, "")
-			if (count % 256 == 0) {
+			# BusyBox awk commonly limits one output record to about 4 KiB. Keep
+			# each nft command comfortably below that limit, including IPv6 CIDRs.
+			if (count % 32 == 0) {
 				if (count > 0) print " }"
 				printf "add element inet %s %s { ", table, set_name
 			} else {
@@ -185,8 +187,15 @@ EOF
 		lan6_accept="ip6 daddr @bypass_lan6 accept"
 	fi
 	local direct_dns_accept="" direct_dns6_accept=""
-	local direct_bind_configured=0
+	local direct_bind_configured=0 direct_sid
 	[ -n "$(config_t_get global_rules direct_egress_interface)" ] && direct_bind_configured=1
+	for direct_sid in $(uci -q show "$CONFIG" 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=shunt_rules$/\1/p'); do
+		[ "$(config_n_get "$direct_sid" outbound)" = "_direct" ] && \
+			[ -n "$(config_n_get "$direct_sid" egress_interface)" ] && {
+				direct_bind_configured=1
+				break
+			}
+	done
 	if { [ "$WRITE_IPSET_DIRECT" = "1" ] || [ "$ENABLE_GEOVIEW_IP" = "1" ]; } && [ "$direct_bind_configured" = "0" ]; then
 		direct_dns_accept="ip daddr @bypass_direct_dns accept"
 		direct_dns6_accept="ip6 daddr @bypass_direct_dns6 accept"
