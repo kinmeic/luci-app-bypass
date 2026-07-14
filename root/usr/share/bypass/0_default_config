@@ -16,9 +16,8 @@ config global
 	option naive_file '/usr/bin/naive'
 	option chinadns_file '/usr/bin/chinadns-ng'
 	option dns2socks_file '/usr/bin/dns2socks'
-	# One shared egress interface for every naive -> server connection (empty =
-	# system default route). Configured in Basic Settings -> Shunt Rule.
-	option default_egress_interface ''
+	# Base table/priority for per-node NaiveProxy egress policy routing. A node's
+	# logical interface is configured in its Node Config page.
 	option naive_egress_table '20200'
 	option naive_egress_rule_priority '900'
 
@@ -115,5 +114,6 @@ config nodes 'naive1'
 	option protocol 'https'
 	option address 'naive.example.com'
 	option port '443'
+	option egress_interface ''
 	option username 'user'
 	option password 'pass'

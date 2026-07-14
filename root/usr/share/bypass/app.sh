@@ -96,8 +96,8 @@ get_config() {
 	[ "$DNS2SOCKS_PORT" = "$CHINADNS_PORT" ] && DNS2SOCKS_PORT=$(expr "$DNS2SOCKS_PORT" + 1)
 	DNS_SPLIT_DOMAIN=$(config_t_get global_dns dns_split_domain geosite:cn)
 
-	# Egress (destination policy routing, independent of mwan3 packet marks).
-	DEFAULT_EGRESS_IFACE=$(config_t_get global default_egress_interface)
+	# Per-node egress uses destination policy routing, independent of mwan3
+	# packet marks. These are base values; each selected node receives +index.
 	NAIVE_EGRESS_TABLE=$(config_t_get global naive_egress_table 20200)
 	NAIVE_EGRESS_RULE_PRIORITY=$(config_t_get global naive_egress_rule_priority 900)
 	echo "$NAIVE_EGRESS_TABLE" | grep -qE '^[0-9]+$' || NAIVE_EGRESS_TABLE=20200
@@ -243,32 +243,67 @@ run_naive_node() {
 
 run_naive_nodes() {
 	prepare_selected_nodes
+	teardown_egress_routing
 	[ -s "$TMP_PATH/selected_nodes" ] || {
 		log 0 "No shunt rule selects a NaiveProxy node; starting BypassCore with direct/blackhole rules only."
 		return 0
 	}
 	[ -n "$NAIVE_BIN" ] || { log 0 "naiveproxy binary not found; selected proxy rules cannot start."; return 1; }
 
-	# Every Naive server uses the one Default NaiveProxy Interface. Aggregate all
-	# server destinations into one policy table so there is no per-node override.
-	if [ -n "$DEFAULT_EGRESS_IFACE" ]; then
-		: > "$TMP_PATH/uplink_ips"
-		: > "$TMP_PATH/uplink_ips6"
-		local node address
-		while read -r node; do
+	# Resolve and record each node separately. Different nodes may use different
+	# logical WANs, so they receive consecutive policy tables and priorities.
+	# A destination IP cannot safely belong to two different WANs because Linux
+	# destination rules cannot distinguish the originating Naive process; reject
+	# that ambiguous configuration instead of silently choosing one interface.
+	: > "$TMP_PATH/egress_plan"
+	: > "$TMP_PATH/egress_map4"
+	: > "$TMP_PATH/egress_map6"
+	local node address iface ipv4_file ipv6_file index=0
+	while read -r node; do
+		[ -n "$node" ] || continue
+		iface=$(config_n_get "$node" egress_interface)
+		if [ -n "$iface" ]; then
 			address=$(config_n_get "$node" address)
-			resolve_all_ipv4 "$address"
-		done < "$TMP_PATH/selected_nodes" | awk 'NF && !seen[$0]++' > "$TMP_PATH/uplink_ips"
-		while read -r node; do
-			address=$(config_n_get "$node" address)
-			resolve_all_ipv6 "$address"
-		done < "$TMP_PATH/selected_nodes" | awk 'NF && !seen[$0]++' > "$TMP_PATH/uplink_ips6"
-		setup_egress_routing "$DEFAULT_EGRESS_IFACE" "$NAIVE_EGRESS_TABLE" "$NAIVE_EGRESS_RULE_PRIORITY" || return 1
-	else
-		log 0 "No Default NaiveProxy Interface configured; all Naive nodes use the system default route."
-	fi
+			ipv4_file="$TMP_PATH/uplink_ips.${index}"
+			ipv6_file="$TMP_PATH/uplink_ips6.${index}"
+			resolve_all_ipv4 "$address" | awk 'NF && !seen[$0]++' > "$ipv4_file"
+			resolve_all_ipv6 "$address" | awk 'NF && !seen[$0]++' > "$ipv6_file"
+			[ -s "$ipv4_file" ] || [ -s "$ipv6_file" ] || {
+				log 0 "Naive node [%s] has egress interface [%s], but its server address could not be resolved." "$node" "$iface"
+				return 1
+			}
+			awk -v iface="$iface" -v node="$node" 'NF { print $1, iface, node }' "$ipv4_file" >> "$TMP_PATH/egress_map4"
+			awk -v iface="$iface" -v node="$node" 'NF { print $1, iface, node }' "$ipv6_file" >> "$TMP_PATH/egress_map6"
+			printf '%s %s %s %s %s\n' "$index" "$node" "$iface" "$ipv4_file" "$ipv6_file" >> "$TMP_PATH/egress_plan"
+		else
+			log 0 "Naive node [%s] uses the system default route." "$node"
+		fi
+		index=$((index + 1))
+	done < "$TMP_PATH/selected_nodes"
 
-	local node port index=0
+	local conflict
+	conflict=$(
+		awk 'seen[$1] && owner[$1] != $2 { print $1 " (" owner[$1] " vs " $2 ")"; exit } { seen[$1]=1; owner[$1]=$2 }' \
+			"$TMP_PATH/egress_map4" "$TMP_PATH/egress_map6"
+	)
+	[ -z "$conflict" ] || {
+		log 0 "Naive nodes resolve to the same server IP with conflicting egress interfaces: %s." "$conflict"
+		return 1
+	}
+
+	local table priority
+	while read -r index node iface ipv4_file ipv6_file; do
+		[ -n "$iface" ] || continue
+		table=$((NAIVE_EGRESS_TABLE + index))
+		priority=$((NAIVE_EGRESS_RULE_PRIORITY + index))
+		setup_egress_routing "$iface" "$table" "$priority" "$ipv4_file" "$ipv6_file" "Naive node [$node]" || {
+			teardown_egress_routing
+			return 1
+		}
+	done < "$TMP_PATH/egress_plan"
+
+	local port
+	index=0
 	while read -r node; do
 		[ -n "$node" ] || continue
 		port=$(node_socks_port "$node")
@@ -731,7 +766,7 @@ gen_bypasscore_config() {
 	json_close_object
 
 	# observatory (only useful if the bypasscore binary is present)
-	if [ -x "$BYPASSCORE_FILE" ]; then
+	if is_linux_elf "$BYPASSCORE_FILE"; then
 		json_add_object observatory
 			json_add_array subject_selector
 				json_add_string '' proxy_
@@ -785,8 +820,8 @@ gen_bypasscore_config() {
 # BypassCore transparent core: `bypasscore -run -c <cfg>` (daemon).
 # ------------------------------------------------------------------------------
 run_bypasscore_core() {
-	if ! [ -x "$BYPASSCORE_FILE" ]; then
-		log 0 "BypassCore is missing or not executable; service cannot start."
+	if ! is_linux_elf "$BYPASSCORE_FILE"; then
+		log 0 "BypassCore is missing, not executable, or not an ELF binary; service cannot start."
 		return 1
 	fi
 	gen_bypasscore_config || return 1
@@ -959,7 +994,7 @@ start() {
 		return 0
 	}
 	check_run_environment || return 1
-	if ! [ -x "$BYPASSCORE_FILE" ]; then
+	if ! is_linux_elf "$BYPASSCORE_FILE"; then
 		log 0 "BypassCore is required but unavailable at [%s]; service not started." "$BYPASSCORE_FILE"
 		return 1
 	fi

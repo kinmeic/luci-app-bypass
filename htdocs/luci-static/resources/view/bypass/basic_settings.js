@@ -101,7 +101,7 @@ function statusCard(type, icon, title, initLabel) {
 	]);
 	if (type) {
 		card.addEventListener('click', function () {
-			span.className = 'red';
+			span.className = 'yellow';
 			span.textContent = _('Check…');
 			var url = ({
 				baidu: 'https://www.baidu.com',
@@ -213,10 +213,11 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.taboption('Main', form.Value, 'naive_egress_table', _('Egress route table'));
+		o.description = _('Base policy route table number. Each selected NaiveProxy node with an egress interface uses this value plus its node index.');
 		o.datatype = 'uinteger';
 		o.placeholder = '20200';
 		o = s.taboption('Main', form.Value, 'naive_egress_rule_priority', _('Egress rule priority'));
-		o.description = _('Priority of the destination policy rules. The default 900 runs before Passwall2/mwan3-style marked rules without modifying their packet marks.');
+		o.description = _('Base priority of the per-node destination policy rules. The default 900 runs before Passwall2/mwan3-style marked rules without modifying their packet marks.');
 		o.datatype = 'uinteger';
 		o.placeholder = '900';
 
@@ -253,11 +254,6 @@ return view.extend({
 		ifaces.forEach(function (i) { o.value(i, i); });
 		crossSection(o, 'global_rules');
 
-		o = s.taboption('Shunt Rule', form.ListValue, 'default_egress_interface', _('Default NaiveProxy Interface'),
-			_('Send every NaiveProxy server connection through this OpenWrt network (wan/wan1/usbwan). Empty = system default route.'));
-		o.value('', _('(system default route)'));
-		ifaces.forEach(function (i) { o.value(i, i); });
-
 		/* Passwall2-style rule/outbound table.  The Default row is a real,
 		 * reserved shunt_rules section so it shares the exact same editor and
 		 * runtime semantics, but Rule Manage filters it out. */
@@ -281,14 +277,15 @@ return view.extend({
 		o.value('_blackhole', _('Blackhole (Block)'));
 		uci.sections('bypass', 'nodes').forEach(function (node) {
 			var label = node.remarks || node['.name'];
-			o.value(node['.name'], _('default') + ' / ' + label);
+			var egress = node.egress_interface || _('system default');
+			o.value(node['.name'], label + ' [' + egress + ']');
 		});
 
 		o = rs.option(form.ListValue, 'egress_interface', _('Egress Interface'));
 		o.value('', _('(use default direct interface)'));
 		ifaces.forEach(function (i) { o.value(i, i); });
 		o.depends('outbound', '_direct');
-		o.description = _('Only applies to Direct Connection. Every selected NaiveProxy node uses the global Default NaiveProxy Interface above.');
+		o.description = _('Only applies to Direct Connection.');
 
 		/* ----- DNS tab (options from 'global_dns') ----- */
 		o = s.taboption('DNS', form.TextValue, 'direct_dns_shunt', _('Direct domain DNS routing'));
