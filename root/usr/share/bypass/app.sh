@@ -821,7 +821,7 @@ gen_bypasscore_config() {
 # ------------------------------------------------------------------------------
 run_bypasscore_core() {
 	if ! is_linux_elf "$BYPASSCORE_FILE"; then
-		log 0 "BypassCore is missing, not executable, or not an ELF binary; service cannot start."
+		log 0 "BypassCore is missing, not executable, or does not identify as BypassCore; service cannot start."
 		return 1
 	fi
 	gen_bypasscore_config || return 1

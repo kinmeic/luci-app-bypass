@@ -400,15 +400,19 @@ get_geoip() {
 	[ -s "${output_path}" ] && cat "${output_path}"
 }
 
-# BypassCore is a native Linux executable. Checking only the executable bit can
-# accept shell scripts, text files or a macOS Mach-O binary and then fail much
-# later with a misleading startup error. ELF magic is architecture-neutral, so
-# it accepts all OpenWrt CPU targets while rejecting non-Linux package assets.
+# BypassCore is normally a native Linux executable. Some OpenWrt packages use
+# an executable launcher at /usr/bin/bypasscore, however, so accept that form
+# only when its --version output identifies BypassCore. This avoids rejecting a
+# working installation while still refusing arbitrary executable files.
 is_linux_elf() {
-	local path=$1 magic
-	[ -f "$path" ] && [ -x "$path" ] || return 1
-	magic=$(od -An -tx1 -N4 "$path" 2>/dev/null | tr -d ' \n')
-	[ "$magic" = "7f454c46" ]
+	local path=$1 target magic
+	[ -e "$path" ] && [ -x "$path" ] || return 1
+	target=$(readlink -f "$path" 2>/dev/null)
+	[ -n "$target" ] || target=$path
+	[ -f "$target" ] || return 1
+	magic=$(od -An -tx1 -N4 "$target" 2>/dev/null | tr -d ' \n')
+	[ "$magic" = "7f454c46" ] && return 0
+	"$path" --version 2>/dev/null | grep -q '^BypassCore[[:space:]]'
 }
 
 # ------------------------------------------------------------------------------

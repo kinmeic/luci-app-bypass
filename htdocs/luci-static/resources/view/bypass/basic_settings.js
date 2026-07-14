@@ -8,7 +8,7 @@
 
 // Basic Settings — merged landing page, passwall2-style tabs:
 //   Main / Shunt Rule / DNS / Log / Maintain
-// All tabs live on a SINGLE NamedSection ('global') so LuCI renders one tab
+// All tabs live on a SINGLE TypedSection ('global') so LuCI renders one tab
 // bar. Options that physically reside in other UCI sections (global_delay,
 // global_rules, global_dns) are redirected via the crossSection() helper which
 // overrides cfgvalue/write/remove to target the correct UCI section.
@@ -56,8 +56,8 @@ function api(/* action, ...args */) {
 }
 
 // Redirect an option's cfgvalue/write/remove to a different UCI section than
-// the one its parent NamedSection is bound to. Used so all tabs can live on a
-// single 'global' NamedSection while their options physically reside in
+// the one its parent TypedSection is bound to. Used so all tabs can live on a
+// single 'global' TypedSection while their options physically reside in
 // global_delay / global_rules / global_dns.
 function firstSection(type) {
 	var sections = uci.sections('bypass', type);
@@ -177,14 +177,17 @@ return view.extend({
 			badge(_('dns2socks'), status.dns2socks_present === 1, _('present'), _('optional'))
 		]);
 
-		/* ---- The form.Map (single tabbed NamedSection + table section) ---- */
+		/* ---- The form.Map (single tabbed TypedSection + table section) ---- */
 		var m = new form.Map('bypass');
 
 		var o;
 
-		/* ===== Single NamedSection with all tabs ===== */
-		var globalSection = firstSection('global');
-		var s = m.section(form.NamedSection, globalSection, 'global');
+		/* ===== Single TypedSection with all tabs ===== */
+		/* Use TypedSection for the anonymous global section. NamedSection can
+		 * render this page, but its save path is unreliable when the same map
+		 * contains tabs and options redirected to other UCI sections. */
+		var s = m.section(form.TypedSection, 'global');
+		s.anonymous = true;
 		s.addremove = false;
 		s.tab('Main', _('Main'));
 		s.tab('Shunt Rule', _('Shunt Rule'));

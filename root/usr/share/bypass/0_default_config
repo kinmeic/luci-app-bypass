@@ -11,7 +11,7 @@ config global
 	# BypassCore binary (install from https://github.com/kinmeic/BypassCore
 	# releases; pick the build matching your router's architecture). The
 	# routing/split engine + Observatory / route-test / DNS-resolve pages
-	# auto-disable if the binary is absent or not executable.
+	# auto-disable if the binary/launcher is absent or does not identify itself.
 	option bypasscore_file '/usr/bin/bypasscore'
 	option naive_file '/usr/bin/naive'
 	option chinadns_file '/usr/bin/chinadns-ng'
