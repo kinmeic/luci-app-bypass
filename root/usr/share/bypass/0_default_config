@@ -24,9 +24,10 @@ config global
 config global_forwarding
 	option ipv6_tproxy '0'
 	option force_proxy_lan_ip '0'
+	option accept_icmp '0'
 	option tcp_no_redir_ports 'disable'
 	option udp_no_redir_ports 'disable'
-	option tcp_redir_ports '22,25,53,80,143,443,465,587,853,873,993,995,5222,8080,8443,9418'
+	option tcp_redir_ports '1:65535'
 	option udp_redir_ports '1:65535'
 	option tcp_proxy_way 'redirect'
 
@@ -48,7 +49,7 @@ config global_rules
 	option geoip_update '1'
 	option update_week_mode ''
 	option update_time_mode '0:00'
-	option update_interval_mode '2'
+	option update_interval_mode '1'
 	option v2ray_location_asset '/usr/share/v2ray/'
 	option domainStrategy 'IpOnDemand'
 	option domainMatcher 'hybrid'

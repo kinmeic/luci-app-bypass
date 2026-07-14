@@ -1097,6 +1097,42 @@ msgstr "文件位置"
 msgid "Protocol"
 msgstr "协议"
 
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "Inbound Tag"
+msgstr "入站标签"
+
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "Transparent proxy"
+msgstr "透明代理"
+
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "Source"
+msgstr "来源"
+
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "Use comma-separated ports or ranges, for example 80,443,1000-2000."
+msgstr "请使用逗号分隔端口或端口范围，例如 80,443,1000-2000。"
+
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "Enter an IPv4/IPv6 address, CIDR, or geoip: rule."
+msgstr "请输入 IPv4/IPv6 地址、CIDR 或 geoip: 规则。"
+
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "BypassCore currently identifies HTTP and TLS traffic through transparent-inbound sniffing."
+msgstr "BypassCore 当前通过透明入站嗅探识别 HTTP 和 TLS 流量。"
+
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "Restrict this rule to traffic entering through the BypassCore transparent inbound."
+msgstr "将此规则限制为从 BypassCore 透明入站进入的流量。"
+
+#: htdocs/luci-static/resources/view/bypass/rule_edit.js
+msgid "Source IPv4/IPv6 address, CIDR, or geoip: rule, for example 192.168.1.0/24 or geoip:private."
+msgstr "来源 IPv4/IPv6 地址、CIDR 或 geoip: 规则，例如 192.168.1.0/24 或 geoip:private。"
+
+#: htdocs/luci-static/resources/view/bypass/other_settings.js
+msgid "Hijacking ICMP (PING)"
+msgstr "劫持 ICMP（PING）"
+
 msgid ""
 "Send this NaiveProxy node's server connection through the selected OpenWrt "
 "network. Empty = system default route."

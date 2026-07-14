@@ -79,6 +79,7 @@ get_config() {
 	UDP_REDIR_PORTS=$(config_t_get global_forwarding udp_redir_ports '1:65535')
 	PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)
 	FORCE_PROXY_LAN_IP=$(config_t_get global_forwarding force_proxy_lan_ip 0)
+	ACCEPT_ICMP=$(config_t_get global_forwarding accept_icmp 0)
 
 	DOMESTIC_DNS_USER=$(config_t_get global_dns domestic_dns auto)
 	REMOTE_DNS=$(config_t_get global_dns remote_dns 1.1.1.1)
@@ -318,6 +319,29 @@ run_naive_nodes() {
 # direct. Node server IPs go into bypass_vps (always direct).
 # ------------------------------------------------------------------------------
 
+# ChinaDNS-NG uses '#port' in upstream URLs (for example
+# udp://127.0.0.1#10554), unlike the conventional host:port syntax accepted by
+# dns2socks and used by the LuCI form. Convert an IPv4 host:port suffix while
+# leaving standard-port and unbracketed IPv6 addresses untouched.
+chinadns_upstream() {
+	local value=$1 prefix="" address
+	case "$value" in
+		*://*) prefix="${value%%://*}://"; address=${value#*://} ;;
+		*) address=$value ;;
+	esac
+	case "$address" in
+		*#*) ;;
+		\[*\]:*)
+			local bracket_host=${address%%]*} port=${address##*:}
+			bracket_host=${bracket_host#?}
+			address="${bracket_host}#${port}"
+			;;
+		*:*:*) ;; # unbracketed IPv6 without an explicit port
+		*:*) address="${address%:*}#${address##*:}" ;;
+	esac
+	printf '%s%s\n' "$prefix" "$address"
+}
+
 run_chinadns_ng() {
 	[ -z "$CHINADNS_BIN" ] && {
 		log 0 "chinadns-ng not found (install chinadns-ng or set chinadns_file). Split DNS disabled."
@@ -392,11 +416,11 @@ run_chinadns_ng() {
 
 	local remote_upstream=$REMOTE_DNS
 	if [ "$DNS2SOCKS_OK" = "1" ]; then
-		remote_upstream="udp://127.0.0.1:${DNS2SOCKS_PORT}"
+		remote_upstream="udp://127.0.0.1#${DNS2SOCKS_PORT}"
 	else case "$REMOTE_DNS_PROTOCOL" in
-		udp) remote_upstream=$REMOTE_DNS ;;
-		tcp) remote_upstream="tcp://${REMOTE_DNS#tcp://}" ;;
-		tls) remote_upstream="tls://${REMOTE_DNS#tls://}" ;;
+		udp) remote_upstream=$(chinadns_upstream "$REMOTE_DNS") ;;
+		tcp) remote_upstream=$(chinadns_upstream "tcp://${REMOTE_DNS#tcp://}") ;;
+		tls) remote_upstream=$(chinadns_upstream "tls://${REMOTE_DNS#tls://}") ;;
 		doh) remote_upstream="$REMOTE_DNS_DOH" ;;
 		*) remote_upstream="tcp://${REMOTE_DNS#*://}" ;;
 	esac
@@ -425,7 +449,7 @@ run_chinadns_ng() {
 
 	# Direct domain DNS routing groups (same line format as Passwall2). Each
 	# group selects its own upstream and writes answers to the direct NFTSet.
-	local direct_dns_groups="" _dd_domain _dd_upstream _dd_extra _dd_index=0 _dd_file _dd_code
+	local direct_dns_groups="" _dd_domain _dd_upstream _dd_extra _dd_index=0 _dd_file _dd_code _dd_chinadns_upstream
 	while IFS=' ' read -r _dd_domain _dd_upstream _dd_extra; do
 		case "$_dd_domain" in ''|'#'*) continue ;; esac
 		[ -n "$_dd_upstream" ] && [ -z "$_dd_extra" ] || continue
@@ -440,10 +464,11 @@ run_chinadns_ng() {
 			domain:*|full:*) echo "${_dd_domain#*:}" > "$_dd_file" ;;
 		esac
 		[ -s "$_dd_file" ] || continue
+		_dd_chinadns_upstream=$(chinadns_upstream "$_dd_upstream")
 		direct_dns_groups="${direct_dns_groups}
 	group direct_dns_${_dd_index}
 	group-dnl ${_dd_file}
-	group-upstream ${_dd_upstream}
+	group-upstream ${_dd_chinadns_upstream}
 	${direct_ipset_line}"
 	done <<-EOF
 	$DIRECT_DNS_SHUNT
@@ -465,14 +490,31 @@ run_chinadns_ng() {
 		${direct_dns_groups}
 	EOF
 
-	ln_run 0 "$CHINADNS_BIN" "$CHINADNS_TAG" "/dev/null" -C "$config_file" -v
-	sleep 1
+	local chinadns_log="${cfg_dir}/chinadns-ng.log" wait_count=0
+	: > "$chinadns_log"
+	ln_run 0 "$CHINADNS_BIN" "$CHINADNS_TAG" "$chinadns_log" -C "$config_file" -v
+	# Loading a large geosite-derived chnlist can take several seconds on a
+	# router. Poll the actual UDP listener instead of declaring failure after a
+	# fixed one-second delay.
+	while [ "$wait_count" -lt 15 ]; do
+		[ "$(check_port_exists "$CHINADNS_PORT" udp)" -gt 0 ] 2>/dev/null && break
+		busybox pgrep -f "$TMP_BIN_PATH/$CHINADNS_TAG" >/dev/null 2>&1 || break
+		wait_count=$((wait_count + 1))
+		sleep 1
+	done
 	if [ "$(check_port_exists "$CHINADNS_PORT" udp)" -gt 0 ] 2>/dev/null; then
 		CHINADNS_OK=1
 		log 0 "ChinaDNS-NG: :%s  domestic=%s  remote=%s (%s)" "$CHINADNS_PORT" "$DOMESTIC_DNS" "$remote_upstream" "$REMOTE_DNS_PROTOCOL"
 	else
 		CHINADNS_OK=0
-		log 0 "ChinaDNS-NG failed to listen on UDP :%s; check its generated config and binary capabilities." "$CHINADNS_PORT"
+		log 0 "ChinaDNS-NG failed to listen on UDP :%s after %s seconds." "$CHINADNS_PORT" "$wait_count"
+		if [ -s "$chinadns_log" ]; then
+			tail -n 12 "$chinadns_log" | while IFS= read -r line; do
+				[ -n "$line" ] && log 1 "ChinaDNS-NG: %s" "$line"
+			done
+		else
+			log 1 "ChinaDNS-NG exited without diagnostic output; generated config: %s" "$config_file"
+		fi
 		return 1
 	fi
 }
@@ -715,7 +757,7 @@ gen_bypasscore_config() {
 					json_close_array
 				json_close_object
 			fi
-			local sid tag domains ips net outbound egress default_sid default_outbound
+			local sid tag domains ips net outbound egress default_sid default_outbound protocols inbound sources ports
 			for sid in $(uci -q show "${CONFIG}" 2>/dev/null | grep "=shunt_rules" | cut -d '.' -f2 | cut -d '=' -f1); do
 				[ "$(config_n_get "$sid" is_default 0)" = "1" ] && { default_sid=$sid; continue; }
 				outbound=$(config_n_get "$sid" outbound _direct)
@@ -745,6 +787,31 @@ gen_bypasscore_config() {
 					fi
 					net=$(config_n_get "$sid" network tcp,udp)
 					[ -n "$net" ] && json_add_string network "$net"
+					protocols=$(config_n_get "$sid" protocol)
+					if [ -n "$protocols" ]; then
+						json_add_array protocol
+						local p
+						for p in $protocols; do json_add_string '' "$p"; done
+						json_close_array
+					fi
+					inbound=$(config_n_get "$sid" inbound)
+					case " $inbound " in
+						*" tproxy "*)
+							json_add_array inboundTag
+							json_add_string '' tcp_redir
+							[ "$PROXY_IPV6" = "1" ] && json_add_string '' ipv6_tproxy
+							json_close_array
+							;;
+					esac
+					sources=$(config_n_get "$sid" source)
+					if [ -n "$sources" ]; then
+						json_add_array source
+						local src
+						for src in $sources; do json_add_string '' "$src"; done
+						json_close_array
+					fi
+					ports=$(config_n_get "$sid" port)
+					[ -n "$ports" ] && json_add_string port "$ports"
 				json_close_object
 			done
 			# The reserved Default row is always emitted last as the catch-all.

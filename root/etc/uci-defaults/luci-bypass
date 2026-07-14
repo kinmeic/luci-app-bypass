@@ -100,6 +100,21 @@ uci -q get bypass.@global_forwarding[0].ipv6_tproxy >/dev/null 2>&1 || \
 	uci -q set bypass.@global_forwarding[0].ipv6_tproxy='0'
 uci -q get bypass.@global_forwarding[0].force_proxy_lan_ip >/dev/null 2>&1 || \
 	uci -q set bypass.@global_forwarding[0].force_proxy_lan_ip='0'
+uci -q get bypass.@global_forwarding[0].accept_icmp >/dev/null 2>&1 || \
+	uci -q set bypass.@global_forwarding[0].accept_icmp='0'
+
+# v1.3.10 aligns the historical UI defaults with Passwall2. Apply this once so
+# a later user choice of UDP / Common Use / 2 hours is not rewritten again by
+# subsequent package upgrades.
+if [ "$(uci -q get bypass.@global[0].migration_1_3_10)" != "1" ]; then
+	[ "$(uci -q get bypass.@global_dns[0].remote_dns_protocol)" = "udp" ] && \
+		uci -q set bypass.@global_dns[0].remote_dns_protocol='tcp'
+	[ "$(uci -q get bypass.@global_forwarding[0].tcp_redir_ports)" = "22,25,53,80,143,443,465,587,853,873,993,995,5222,8080,8443,9418" ] && \
+		uci -q set bypass.@global_forwarding[0].tcp_redir_ports='1:65535'
+	[ "$(uci -q get bypass.@global_rules[0].update_interval_mode)" = "2" ] && \
+		uci -q set bypass.@global_rules[0].update_interval_mode='1'
+	uci -q set bypass.@global[0].migration_1_3_10='1'
+fi
 uci -q commit bypass
 
 # Make the helper scripts executable.
@@ -112,6 +127,7 @@ if [ -s /usr/share/bypass/bypass.init ]; then
 	cp -f /usr/share/bypass/bypass.init /etc/init.d/bypass
 	chmod 755 /etc/init.d/bypass
 	rm -f /etc/init.d/bypass.apk-new /etc/init.d/bypass-opkg 2>/dev/null
+	/etc/init.d/bypass enable >/dev/null 2>&1
 fi
 
 # Register a firewall include so the transparent-proxy ruleset survives fw3/fw4

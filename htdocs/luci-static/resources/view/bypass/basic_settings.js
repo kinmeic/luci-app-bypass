@@ -174,7 +174,7 @@ return view.extend({
 			badge(_('bypasscore'), status.bypasscore_present === 1, _('present'), _('missing')),
 			badge(_('naive'), status.naive_present === 1, _('present'), _('missing')),
 			badge(_('chinadns-ng'), status.chinadns_present === 1, _('present'), _('missing')),
-			badge(_('dns2socks'), status.dns2socks_present === 1, _('present'), _('optional'))
+			badge(_('dns2socks'), status.dns2socks_present === 1, _('present'), _('missing'))
 		]);
 
 		/* ---- The form.Map (single tabbed TypedSection + table section) ---- */
@@ -283,12 +283,6 @@ return view.extend({
 			var egress = node.egress_interface || _('system default');
 			o.value(node['.name'], label + ' [' + egress + ']');
 		});
-
-		o = rs.option(form.ListValue, 'egress_interface', _('Egress Interface'));
-		o.value('', _('(use default direct interface)'));
-		ifaces.forEach(function (i) { o.value(i, i); });
-		o.depends('outbound', '_direct');
-		o.description = _('Only applies to Direct Connection.');
 
 		/* ----- DNS tab (options from 'global_dns') ----- */
 		o = s.taboption('DNS', form.TextValue, 'direct_dns_shunt', _('Direct domain DNS routing'));
