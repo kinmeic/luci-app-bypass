@@ -65,7 +65,9 @@ return view.extend({
 
 		o = gs.option(form.ListValue, 'update_week_mode', _('Auto Update Mode'));
 		o.default = '';
-		o.rmempty = false;
+		// Disable is represented by an empty UCI value.  Allow the form to
+		// persist that value instead of rejecting it during Save & Apply.
+		o.rmempty = true;
 		o.value('', _('Disable'));
 		o.value('8', _('Loop Mode'));
 		o.value('7', _('Every day'));
