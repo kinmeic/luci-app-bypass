@@ -27,6 +27,8 @@ load_standalone_config() {
 	TCP_PROXY_WAY=$(config_t_get global_forwarding tcp_proxy_way redirect)
 	TCP_NO_REDIR_PORTS=$(config_t_get global_forwarding tcp_no_redir_ports disable)
 	TCP_REDIR_PORTS=$(config_t_get global_forwarding tcp_redir_ports 1:65535)
+	UDP_POLICY=$(config_t_get global_forwarding udp_policy block)
+	case "$UDP_POLICY" in block|direct) ;; *) UDP_POLICY=block ;; esac
 	PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)
 	FORCE_PROXY_LAN_IP=$(config_t_get global_forwarding force_proxy_lan_ip 0)
 	ACCEPT_ICMP=$(config_t_get global_forwarding accept_icmp 0)
@@ -215,7 +217,7 @@ EOF
 		log 0 "Direct interface binding is configured; keeping direct DNS/GeoIP matches inside BypassCore so the selected interface is honored."
 	fi
 
-	local nat_chain="" mangle_chain="" mangle6_chain="" tcp_redirect_rule="" icmp_redirect_rule="" dns_redirect_rule="" dns_tproxy_bypass="" tcp_no_redir_rule=""
+	local nat_chain="" udp_guard_chain="" mangle_chain="" mangle6_chain="" tcp_redirect_rule="" icmp_redirect_rule="" dns_redirect_rule="" dns_tproxy_bypass="" tcp_no_redir_rule=""
 	# REDIRECT mode uses NAT PREROUTING for TCP. ICMP hijacking is implemented
 	# in the same NAT base chain and makes the router answer matching IPv4 pings,
 	# matching Passwall2's nftables behavior without sending ICMP to BypassCore.
@@ -240,6 +242,33 @@ EOF
 		dns_redirect_rule="meta l4proto { tcp, udp } th dport 53 redirect to :53"
 		dns_tproxy_bypass="meta l4proto { tcp, udp } th dport 53 accept"
 	fi
+	# NaiveProxy's SOCKS5 server rejects UDP ASSOCIATE. In strict mode, stop
+	# forwarded client UDP before it can leave through the system default route.
+	# DNS redirected to the router is allowed to continue to the later NAT hook;
+	# local/private destinations and link-local discovery never expose the WAN IP.
+	if [ "$CLIENT_PROXY" = "1" ] && [ "$UDP_POLICY" = "block" ]; then
+		local udp_dns_accept=""
+		[ "$DNS_REDIRECT" = "1" ] && udp_dns_accept="meta l4proto udp udp dport 53 accept"
+		udp_guard_chain="chain udp_guard { type filter hook prerouting priority -151; policy accept;
+			meta l4proto != udp accept
+			${wan_accept}
+			iif lo accept
+			ip daddr @bypass_local accept
+			ip6 daddr @bypass_local6 accept
+			${lan_accept}
+			${lan6_accept}
+			ip daddr 169.254.0.0/16 accept
+			ip daddr 224.0.0.0/4 accept
+			ip daddr 255.255.255.255 accept
+			ip6 daddr fe80::/10 accept
+			ip6 daddr ff00::/8 accept
+			${udp_dns_accept}
+			counter drop comment \"bypass: NaiveProxy has no UDP support\"
+		}"
+		log 0 "UDP policy: Block (forwarded external UDP is blocked to prevent NaiveProxy bypass)."
+	elif [ "$CLIENT_PROXY" = "1" ]; then
+		log 0 "UDP policy: Direct (UDP does not pass through NaiveProxy and may expose the real egress IP)."
+	fi
 	if [ -n "$tcp_redirect_rule" ] || [ -n "$icmp_redirect_rule" ] || [ -n "$dns_redirect_rule" ]; then
 		nat_chain="chain prerouting { type nat hook prerouting priority -100; policy accept;
 			ip daddr @bypass_local accept
@@ -255,8 +284,8 @@ EOF
 			${icmp_redirect_rule}
 		}"
 	fi
-	# TProxy mode: mangle PREROUTING TPROXY for TCP. NaiveProxy's SOCKS5
-	# listener rejects UDP ASSOCIATE, so UDP must remain direct.
+	# TProxy mode: mangle PREROUTING TPROXY for TCP. UDP is handled separately
+	# by udp_guard according to the explicit Direct/Block policy above.
 	if [ "$CLIENT_PROXY" = "1" ] && [ "$mode" = "tproxy" ] && [ -n "$tcp_expr" ]; then
 		[ -n "$tcp_expr" ] && mangle_chain="chain prerouting { type filter hook prerouting priority mangle; policy accept;
 			ip daddr @bypass_vps accept
@@ -314,6 +343,7 @@ EOF
 
 	local ruleset="${sets}
 	${nat_chain}
+	${udp_guard_chain}
 	${mangle_chain}
 	${mangle6_chain}
 	}"

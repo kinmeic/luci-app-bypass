@@ -25,6 +25,9 @@ config global_forwarding
 	option ipv6_tproxy '0'
 	option force_proxy_lan_ip '0'
 	option accept_icmp '0'
+	# NaiveProxy cannot carry general UDP. Block forwarded client UDP by
+	# default so QUIC/STUN cannot bypass the transparent TCP proxy.
+	option udp_policy 'block'
 	option tcp_no_redir_ports 'disable'
 	option tcp_redir_ports '1:65535'
 	option tcp_proxy_way 'redirect'

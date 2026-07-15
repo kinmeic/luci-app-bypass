@@ -98,6 +98,13 @@ return view.extend({
 		var sFwd = m.section(form.TypedSection, 'global_forwarding', _('Forwarding Settings'));
 		sFwd.anonymous = true;
 
+		o = sFwd.option(form.ListValue, 'udp_policy', _('UDP Policy'),
+			_('NaiveProxy cannot proxy general UDP traffic. Block prevents forwarded QUIC, STUN and other UDP from bypassing the TCP proxy. Direct leaves UDP on the system route and may expose the real egress IP. DNS redirected to the router and local network traffic are not blocked.'));
+		o.value('block', _('Block (Recommended)'));
+		o.value('direct', _('Direct (May expose real IP)'));
+		o.default = 'block';
+		o.rmempty = false;
+
 		o = sFwd.option(form.Value, 'tcp_no_redir_ports', _('TCP No Redir Ports'));
 		o.validate = validatePortList;
 		o.value('disable', _('No patterns are used'));

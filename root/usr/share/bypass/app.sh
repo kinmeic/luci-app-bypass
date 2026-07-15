@@ -69,6 +69,8 @@ get_config() {
 	TCP_PROXY_WAY=$(config_t_get global_forwarding tcp_proxy_way redirect)
 	TCP_NO_REDIR_PORTS=$(config_t_get global_forwarding tcp_no_redir_ports 'disable')
 	TCP_REDIR_PORTS=$(config_t_get global_forwarding tcp_redir_ports '1:65535')
+	UDP_POLICY=$(config_t_get global_forwarding udp_policy block)
+	case "$UDP_POLICY" in block|direct) ;; *) UDP_POLICY=block ;; esac
 	PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)
 	FORCE_PROXY_LAN_IP=$(config_t_get global_forwarding force_proxy_lan_ip 0)
 	ACCEPT_ICMP=$(config_t_get global_forwarding accept_icmp 0)

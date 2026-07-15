@@ -115,6 +115,8 @@ uci -q get bypass.@global_forwarding[0].force_proxy_lan_ip >/dev/null 2>&1 || \
 	uci -q set bypass.@global_forwarding[0].force_proxy_lan_ip='0'
 uci -q get bypass.@global_forwarding[0].accept_icmp >/dev/null 2>&1 || \
 	uci -q set bypass.@global_forwarding[0].accept_icmp='0'
+uci -q get bypass.@global_forwarding[0].udp_policy >/dev/null 2>&1 || \
+	uci -q set bypass.@global_forwarding[0].udp_policy='block'
 # NaiveProxy's SOCKS listener cannot carry UDP. Remove the historical Passwall
 # placeholders instead of retaining settings which the data path cannot honor.
 uci -q delete bypass.@global_forwarding[0].udp_no_redir_ports
