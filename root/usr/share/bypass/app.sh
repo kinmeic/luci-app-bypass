@@ -68,11 +68,9 @@ get_config() {
 	[ -n "$REDIR_PORT" ] || REDIR_PORT=$(echo $(get_new_port 1041 tcp))
 	TCP_PROXY_WAY=$(config_t_get global_forwarding tcp_proxy_way redirect)
 	TCP_NO_REDIR_PORTS=$(config_t_get global_forwarding tcp_no_redir_ports 'disable')
+	UDP_NO_REDIR_PORTS=$(config_t_get global_forwarding udp_no_redir_ports 'disable')
 	TCP_REDIR_PORTS=$(config_t_get global_forwarding tcp_redir_ports '1:65535')
-	UDP_POLICY=$(config_t_get global_forwarding udp_policy block)
-	case "$UDP_POLICY" in block|direct) ;; *) UDP_POLICY=block ;; esac
 	PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)
-	FORCE_PROXY_LAN_IP=$(config_t_get global_forwarding force_proxy_lan_ip 0)
 	ACCEPT_ICMP=$(config_t_get global_forwarding accept_icmp 0)
 
 	REMOTE_DNS=$(config_t_get global_dns remote_dns 1.1.1.1)
@@ -768,29 +766,6 @@ gen_bypasscore_config() {
 	json_add_object routing
 		json_add_string domainStrategy "$DOMAIN_STRATEGY"
 		json_add_array rules
-			# This rule must precede the default PrivateIP direct rule; otherwise
-			# the UI switch would only alter nftables but BypassCore would still
-			# route matching private destinations directly.
-			local _force_node _force_tag
-			_force_node=$(default_proxy_node)
-			[ -n "$_force_node" ] && _force_tag="proxy_${_force_node}"
-			if [ "$FORCE_PROXY_LAN_IP" = "1" ] && [ -z "$_force_tag" ]; then
-				log 0 "Force Proxy LAN IP is enabled but no NaiveProxy node is selected by any shunt rule."
-				BYPASSCORE_CONFIG_ERROR=1
-			fi
-			if [ "$FORCE_PROXY_LAN_IP" = "1" ] && [ -n "$_force_tag" ]; then
-				json_add_object ''
-					json_add_string outboundTag "$_force_tag"
-					json_add_string network tcp
-					json_add_array ip
-						json_add_string '' "10.0.0.0/8"
-						json_add_string '' "100.64.0.0/10"
-						json_add_string '' "172.16.0.0/12"
-						json_add_string '' "192.168.0.0/16"
-						json_add_string '' "fc00::/7"
-					json_close_array
-				json_close_object
-			fi
 			local sid tag domains ips net outbound egress default_sid default_outbound default_tag protocols inbound sources ports
 			default_sid=""
 			# Pre-scan: find the reserved Default rule and resolve its outbound tag

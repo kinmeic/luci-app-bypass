@@ -262,12 +262,25 @@ return view.extend({
 			form.TableSection, 'shunt_rules', _('Rule'));
 		var rs = o.subsection;
 		rs.addremove = false;
-		rs.anonymous = false;
+		rs.anonymous = true;
 		rs.sortable = false;
-		rs.sectiontitle = function (sid) {
-			return uci.get('bypass', sid, 'is_default') === '1'
-				? _('Default')
-				: (uci.get('bypass', sid, 'remarks') || sid);
+		// Rule Manage persists its sortable rows in UCI section order. Preserve
+		// that exact order here, then move the reserved catch-all to the bottom.
+		rs.cfgsections = function () {
+			var rules = [], defaults = [];
+			uci.sections('bypass', 'shunt_rules').forEach(function (rule) {
+				(rule.is_default === '1' ? defaults : rules).push(rule['.name']);
+			});
+			return rules.concat(defaults);
+		};
+
+		o = rs.option(form.DummyValue, '_rule_name', _('Name'));
+		o.rawhtml = true;
+		o.cfgvalue = function (sid) {
+			var isDefault = uci.get('bypass', sid, 'is_default') === '1';
+			return E('span', isDefault ? {
+				style: 'color:#d00;font-weight:600'
+			} : {}, isDefault ? _('Default') : (uci.get('bypass', sid, 'remarks') || sid));
 		};
 
 		o = rs.option(form.ListValue, 'outbound', _('Node'));

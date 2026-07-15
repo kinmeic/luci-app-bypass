@@ -111,15 +111,21 @@ uci -q commit bypass
 	uci -q set bypass.@global_delay[0].start_delay='60'
 uci -q get bypass.@global_forwarding[0].ipv6_tproxy >/dev/null 2>&1 || \
 	uci -q set bypass.@global_forwarding[0].ipv6_tproxy='0'
-uci -q get bypass.@global_forwarding[0].force_proxy_lan_ip >/dev/null 2>&1 || \
-	uci -q set bypass.@global_forwarding[0].force_proxy_lan_ip='0'
+uci -q delete bypass.@global_forwarding[0].force_proxy_lan_ip
 uci -q get bypass.@global_forwarding[0].accept_icmp >/dev/null 2>&1 || \
 	uci -q set bypass.@global_forwarding[0].accept_icmp='0'
-uci -q get bypass.@global_forwarding[0].udp_policy >/dev/null 2>&1 || \
-	uci -q set bypass.@global_forwarding[0].udp_policy='block'
-# NaiveProxy's SOCKS listener cannot carry UDP. Remove the historical Passwall
-# placeholders instead of retaining settings which the data path cannot honor.
-uci -q delete bypass.@global_forwarding[0].udp_no_redir_ports
+# Replace v1.5.0's all-or-nothing UDP Policy with the Passwall2-style port
+# exclusion. Preserve Direct as "All"; Block and fresh installs remain strict.
+old_udp_policy=$(uci -q get bypass.@global_forwarding[0].udp_policy)
+uci -q get bypass.@global_forwarding[0].udp_no_redir_ports >/dev/null 2>&1 || {
+	if [ "$old_udp_policy" = "direct" ]; then
+		uci -q set bypass.@global_forwarding[0].udp_no_redir_ports='1:65535'
+	else
+		uci -q set bypass.@global_forwarding[0].udp_no_redir_ports='disable'
+	fi
+}
+uci -q delete bypass.@global_forwarding[0].udp_policy
+# There is no UDP-capable transparent upstream in this Naive-only project.
 uci -q delete bypass.@global_forwarding[0].udp_redir_ports
 uci -q get bypass.@global_delay[0].start_daemon >/dev/null 2>&1 || \
 	uci -q set bypass.@global_delay[0].start_daemon='1'
@@ -142,6 +148,8 @@ uci -q commit bypass
 
 # Make the helper scripts executable.
 chmod +x /usr/share/bypass/*.sh 2>/dev/null
+[ -e /usr/share/bypass/direct_ip ] || \
+	cp -f /usr/share/bypass/0_default_direct_ip /usr/share/bypass/direct_ip
 
 # Package managers may protect modified files below /etc and retain the old
 # init script (v1.3.3 used a util-linux-only timed wait option). Refresh the
