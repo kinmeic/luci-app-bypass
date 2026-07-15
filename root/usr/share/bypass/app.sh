@@ -521,7 +521,7 @@ run_chinadns_ng() {
 		bind-port ${CHINADNS_PORT}
 		china-dns ${DOMESTIC_DNS}
 		trust-dns ${remote_upstream}
-		filter-qtype 65
+		filter-qtype 65,28
 		$([ -s "$hosts_file" ] && echo "hosts ${hosts_file}")
 		${domain_rules}
 		group vpslist
@@ -917,7 +917,12 @@ gen_bypasscore_config() {
 		json_add_object ''
 			json_add_string tag "tcp_redir"
 			json_add_string type "$in_type"
-			json_add_string listen "127.0.0.1"
+			# Bind every interface, not just loopback. nftables "redirect to :PORT"
+			# rewrites forwarded LAN traffic to the ingress interface's IP (e.g.
+			# 192.168.12.1), so a 127.0.0.1-only listener would miss it. This mirrors
+			# passwall2's xray/sing-box inbounds (0.0.0.0 / "::"). fw4's default WAN
+			# INPUT DROP keeps the port unreachable from the internet.
+			json_add_string listen "0.0.0.0"
 			json_add_int port "$REDIR_PORT"
 			json_add_string network "$in_net"
 			json_add_boolean sniffing 1
@@ -962,7 +967,7 @@ run_bypasscore_core() {
 	ln_run 0 "$BYPASSCORE_FILE" "bypasscore" "$log_file" -config "$BYPASSCORE_CFG" -run || return 1
 	wait_for_listener bypasscore "$REDIR_PORT" tcp 20 "$log_file" || return 1
 	set_cache_var ACL_GLOBAL_redir_port "$REDIR_PORT"
-	log 0 "BypassCore running as transparent core on tcp://127.0.0.1:%s (-run)." "$REDIR_PORT"
+	log 0 "BypassCore running as transparent core on tcp://0.0.0.0:%s (-run)." "$REDIR_PORT"
 }
 
 # ------------------------------------------------------------------------------
