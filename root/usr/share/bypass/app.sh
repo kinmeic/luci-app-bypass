@@ -41,7 +41,6 @@ get_config() {
 	NODE_SOCKS_BIND_LOCAL=$(config_t_get global node_socks_bind_local 1)
 	CLIENT_PROXY=$(config_t_get global client_proxy 1)
 	LOG_NODE=$(config_t_get global log_node 1)
-	LOGLEVEL=$(config_t_get global loglevel warning)
 	DNS_REDIRECT=$(config_t_get global dns_redirect 1)
 	START_DAEMON=$(config_t_get global_delay start_daemon 1)
 
@@ -246,7 +245,7 @@ run_naive_node() {
 	# An empty log target tells NaiveProxy to use stderr. ln_run already redirects
 	# stdout/stderr to this node's log file, avoiding two writers opening the same
 	# path independently.
-	[ "$LOGLEVEL" = "debug" ] && [ "$LOG_NODE" = "1" ] && json_add_string "log" ""
+	[ "$LOG_NODE" = "1" ] && json_add_string "log" ""
 	json_dump > "$socks_cfg"
 
 	ln_run 0 "$NAIVE_BIN" "${NAIVE_TAG}_${node}" "$log_file" "$socks_cfg" || return 1
@@ -516,12 +515,14 @@ run_chinadns_ng() {
 	$DIRECT_DNS_SHUNT
 	EOF
 
+	local filtered_qtypes=65
+	[ "$PROXY_IPV6" = "1" ] || filtered_qtypes=65,28
 	cat <<-EOF > "$config_file"
 		bind-addr 127.0.0.1
 		bind-port ${CHINADNS_PORT}
 		china-dns ${DOMESTIC_DNS}
 		trust-dns ${remote_upstream}
-		filter-qtype 65,28
+		filter-qtype ${filtered_qtypes}
 		$([ -s "$hosts_file" ] && echo "hosts ${hosts_file}")
 		${domain_rules}
 		group vpslist
@@ -534,11 +535,11 @@ run_chinadns_ng() {
 
 	local chinadns_log="${cfg_dir}/chinadns-ng.log"
 	: > "$chinadns_log"
-	if [ "$LOGLEVEL" = "debug" ] && [ "$LOG_NODE" = "1" ]; then
-		ln_run 0 "$CHINADNS_BIN" "$CHINADNS_TAG" "$chinadns_log" -C "$config_file" -v || return 1
-	else
-		ln_run 0 "$CHINADNS_BIN" "$CHINADNS_TAG" "$chinadns_log" -C "$config_file" || return 1
-	fi
+	# "Enable Node Log" applies to NaiveProxy nodes. Passing -v to ChinaDNS-NG
+	# prints every loaded/queried domain and can fill flash-backed log viewers;
+	# Passwall2 discards that stream. Keep only normal diagnostics in our private
+	# component log so startup failures remain inspectable without list noise.
+	ln_run 0 "$CHINADNS_BIN" "$CHINADNS_TAG" "$chinadns_log" -C "$config_file" || return 1
 	# Loading a large geosite-derived chnlist can take several seconds on a
 	# router, so use a process-aware startup window rather than a fixed sleep.
 	if wait_for_listener "$CHINADNS_TAG" "$CHINADNS_PORT" udp 20 "$chinadns_log"; then
@@ -1098,7 +1099,9 @@ start_crontab() {
 		prefix=$(cron_prefix "$week" "$time" "$interval")
 		[ -n "$prefix" ] && echo "$prefix ${APP_PATH}/rule_update.sh >>${LOG_FILE} 2>&1" >> /etc/crontabs/root
 	fi
-	# Re-resolve naive uplink IPs every hour (DNS round-robin / IP changes).
+	# Re-check interface-bound Naive destinations every hour. The helper only
+	# restarts when the address pinned at startup has actually left DNS, unlike
+	# the old unconditional hourly stop/start.
 	echo "0 * * * * ${APP_PATH}/rule_update.sh refresh_uplink >>${LOG_FILE} 2>&1" >> /etc/crontabs/root
 
 	# Scheduled stop / start / restart (global_delay.*_week_mode).

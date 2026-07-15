@@ -170,14 +170,21 @@ do_node_tcping() {
 	emit
 }
 
-# node_urltest <node_id> -> { code, use_time }
+# node_urltest <node_id> <probe_url> -> { code, use_time }
 # Mirrors passwall2's url_test_node: spin up a short-lived NaiveProxy SOCKS
 # listener for the node, curl the configured probe URL through it, and report
 # the total round-trip in ms. Torn down unconditionally afterward.
 do_node_urltest() {
-	local node_id=$1
+	local node_id=$1 url_test_url=$2
 	json_init
-	[ -z "$node_id" ] && { json_add_int code -1; json_add_string error "missing node"; emit; return; }
+	case "$node_id" in
+		''|*[!A-Za-z0-9_-]*)
+			json_add_int code -1
+			json_add_string error "invalid node"
+			emit
+			return
+			;;
+	esac
 	local address port username password protocol
 	address=$(config_n_get "$node_id" address)
 	port=$(config_n_get "$node_id" port)
@@ -200,8 +207,19 @@ do_node_urltest() {
 	fi
 	case "$protocol" in quic) ;; *) protocol=https ;; esac
 
-	local url_test_url
-	url_test_url=$(config_t_get global url_test_url https://www.google.com/generate_204)
+	# The selector is intentionally not UCI configuration. Accept only the
+	# presets exposed by node_list.js so this root helper cannot become an
+	# arbitrary URL fetch primitive.
+	case "$url_test_url" in
+		https://cp.cloudflare.com/|\
+		https://www.gstatic.com/generate_204|\
+		https://www.google.com/generate_204|\
+		https://www.youtube.com/generate_204|\
+		https://connect.rom.miui.com/generate_204|\
+		https://connectivitycheck.platform.hicloud.com/generate_204|\
+		https://wifi.vivo.com.cn/generate_204) ;;
+		*) url_test_url=https://www.google.com/generate_204 ;;
+	esac
 
 	# Build a minimal SOCKS config (127.0.0.1 only; no egress pinning).
 	local tag="url_test_${node_id}"
@@ -612,7 +630,7 @@ main() {
 		observe)        do_observe ;;
 		resolve)        do_resolve "$1" ;;
 		node_tcping)    do_node_tcping "$1" ;;
-		node_urltest)   do_node_urltest "$1" ;;
+		node_urltest)   do_node_urltest "$1" "$2" ;;
 		config_preview) do_config_preview ;;
 		rule_update)    do_rule_update ;;
 		log_tail)       do_log_tail "$1" ;;
