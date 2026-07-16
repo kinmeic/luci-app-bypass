@@ -305,7 +305,6 @@ return view.extend({
 			var egress = node.egress_interface || (rulesSid && uci.get('bypass', rulesSid, 'default_naive_interface')) || _('system default');
 			o.value(node['.name'], label + ' [' + egress + ']');
 		});
-		o.description = _('Default Node uses the outbound selected by the virtual Default row. It is unavailable on the Default row itself.');
 		o.renderWidget = function (section_id, _option_index, cfgvalue) {
 			var choices = this.transformChoices();
 			var sort = this.keylist;
@@ -354,9 +353,23 @@ return view.extend({
 		o.value('', _('(use default direct interface)'));
 		ifaces.forEach(function (i) { o.value(i, i); });
 		o.depends('outbound', '_direct');
-		var egressCfgvalue = o.cfgvalue.bind(o);
+		var renderEgressWidget = o.renderWidget.bind(o);
+		o.renderWidget = function (section_id, option_index, cfgvalue) {
+			if (section_id !== VIRTUAL_DEFAULT)
+				return renderEgressWidget(section_id, option_index, cfgvalue);
+
+			var widget = new ui.Select('', { '': _('(use default direct interface)') }, {
+				id: this.cbid(section_id),
+				sort: [''],
+				widget: this.widget,
+				optional: this.optional,
+				orientation: this.orientation,
+				disabled: true
+			});
+			return widget.render();
+		};
 		o.cfgvalue = function (section_id) {
-			return section_id === VIRTUAL_DEFAULT ? '' : egressCfgvalue(section_id);
+			return section_id === VIRTUAL_DEFAULT ? '' : (uci.get('bypass', section_id, 'egress_interface') || '');
 		};
 		o.write = function (section_id, formvalue) {
 			if (section_id !== VIRTUAL_DEFAULT) uci.set('bypass', section_id, 'egress_interface', formvalue);

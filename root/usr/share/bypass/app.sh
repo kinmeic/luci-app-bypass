@@ -360,6 +360,7 @@ run_chinadns_ng() {
 	if [ "$WRITE_IPSET_DIRECT" = "1" ]; then
 		local _rsid _rdomain _rline _rcode _rtmp
 		for _rsid in $(uci -q show "${CONFIG}" 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=shunt_rules$/\1/p'); do
+			[ "$(config_n_get "$_rsid" is_default 0)" = "1" ] && continue
 			[ "$(config_n_get "$_rsid" outbound)" = "_direct" ] || continue
 			_rdomain=$(config_n_get "$_rsid" domain_list)
 			while IFS= read -r _rline; do
@@ -554,6 +555,7 @@ gen_bypasscore_config() {
 		# belongs to an outbound, so every override needs a dedicated freedom tag.
 		local _sid _outbound _egress
 		for _sid in $(uci -q show "${CONFIG}" 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=shunt_rules$/\1/p'); do
+			[ "$(config_n_get "$_sid" is_default 0)" = "1" ] && continue
 			_outbound=$(config_n_get "$_sid" outbound _direct)
 			_egress=$(config_n_get "$_sid" egress_interface)
 			[ "$_outbound" = "_direct" ] && [ -n "$_egress" ] || continue

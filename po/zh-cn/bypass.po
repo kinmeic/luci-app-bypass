@@ -43,10 +43,6 @@ msgstr "华为云（国内）"
 msgid "VIVO (CN)"
 msgstr "VIVO（国内）"
 
-#: htdocs/luci-static/resources/view/bypass/basic_settings.js
-msgid "Default Node uses the outbound selected by the virtual Default row. It is unavailable on the Default row itself."
-msgstr "默认节点使用虚拟 Default 行所选的出口；该选项在 Default 行本身不可用。"
-
 #: htdocs/luci-static/resources/view/bypass/node_config.js:21
 #: htdocs/luci-static/resources/view/bypass/node_config.js:27
 msgid "Node Config"

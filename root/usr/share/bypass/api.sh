@@ -413,6 +413,7 @@ geo_rules_for_value() {
 	local search=$1 geo_type=$2 sid list line main
 	search=$(printf '%s' "$search" | tr '[:upper:]' '[:lower:]')
 	for sid in $(uci -q show "$CONFIG" 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=shunt_rules$/\1/p'); do
+		[ "$(config_n_get "$sid" is_default 0)" = "1" ] && continue
 		if [ "$geo_type" = "geoip" ]; then
 			list=$(config_n_get "$sid" ip_list)
 		else

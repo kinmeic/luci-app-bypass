@@ -31,39 +31,19 @@ for sid in $(uci -q show bypass 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=shun
 	[ "$outbound" = "_block" ] && uci -q set "bypass.${sid}.outbound=_blackhole"
 done
 
-# Align the catch-all with Passwall2: migrate the former real, reserved Default
-# section to global_rules.default_node, then remove the section. Existing
-# _default rule values continue to inherit this virtual row.
-default_node=$(uci -q get bypass.@global_rules[0].default_node)
-for default_sid in $(uci -q show bypass 2>/dev/null | sed -n "s/^bypass\.\([^.=]*\)\.is_default='1'$/\1/p"); do
-	[ -n "$default_node" ] || default_node=$(uci -q get "bypass.${default_sid}.outbound")
-	uci -q delete "bypass.${default_sid}"
-done
-if [ -z "$default_node" ]; then
-	if [ -n "$old_global_node" ] && [ "$(uci -q get bypass.${old_global_node})" = "nodes" ]; then
-		default_node=$old_global_node
-	else
-		default_node='_direct'
-	fi
-fi
-[ "$default_node" = "_default" ] && default_node='_direct'
-uci -q set "bypass.@global_rules[0].default_node=${default_node}"
 uci -q delete bypass.@global[0].node
 
-# The old global default is the direct predecessor of Default Naive Interface.
-# Keep it global so nodes with an empty egress_interface inherit it.
-legacy_naive_egress=$(uci -q get bypass.@global_rules[0].default_naive_interface)
-[ -n "$legacy_naive_egress" ] || legacy_naive_egress=$(uci -q get bypass.@global[0].default_egress_interface)
+legacy_naive_egress=$(uci -q get bypass.@global[0].default_egress_interface)
 [ -z "$legacy_naive_egress" ] && [ -n "$old_global_node" ] && {
 	old_node_egress=$(uci -q get "bypass.${old_global_node}.egress_interface")
 	[ -n "$old_node_egress" ] && legacy_naive_egress=$old_node_egress
 }
-[ -n "$legacy_naive_egress" ] && \
-	uci -q set "bypass.@global_rules[0].default_naive_interface=${legacy_naive_egress}"
 for sid in $(uci -q show bypass 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=nodes$/\1/p'); do
 	# The UCI section type already identifies Naive-only nodes. The old option
 	# duplicated that fact after the Type selector was removed from Node Config.
 	uci -q delete "bypass.${sid}.type"
+	[ -z "$(uci -q get bypass.${sid}.egress_interface)" ] && [ -n "$legacy_naive_egress" ] && \
+		uci -q set "bypass.${sid}.egress_interface=${legacy_naive_egress}"
 done
 uci -q delete bypass.@global[0].default_egress_interface
 # URL Test Address is diagnostic UI state, not daemon configuration. Remove the
