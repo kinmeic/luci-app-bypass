@@ -464,7 +464,7 @@ geo_lookup_egress() {
 			;;
 		proxy_*)
 			node=${tag#proxy_}
-			logical=$(config_n_get "$node" egress_interface)
+			logical=$(node_egress_interface "$node")
 			label=$(config_n_get "$node" remarks "$node")
 			printf '%s\n' "Outbound: NaiveProxy node [$label]"
 			;;
