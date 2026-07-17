@@ -212,7 +212,7 @@ get_new_port() {
 		last_get_new_port_auto=$(get_cache_var "last_get_new_port_auto")
 		if [ -n "$last_get_new_port_auto" ]; then
 			port=$last_get_new_port_auto
-			port=$(expr "$port" + 1)
+			port=$((port + 1))
 		else
 			port=$default_start_port
 		fi
@@ -221,15 +221,15 @@ get_new_port() {
 	[ "$port" -lt $min_port ] 2>/dev/null && port=$default_start_port
 	[ "$port" -gt $max_port ] 2>/dev/null && port=$default_start_port
 	local protocol
-	protocol=$(echo "$2" | tr 'A-Z' 'a-z')
+	protocol=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')
 	local result
 	result=$(check_port_exists "$port" "$protocol")
 	if [ "$result" != 0 ]; then
 		local temp=
 		if [ "$port" -lt $max_port ]; then
-			temp=$(expr "$port" + 1)
+			temp=$((port + 1))
 		elif [ "$port" -gt $min_port ]; then
-			temp=$(expr "$port" - 1)
+			temp=$((port - 1))
 		else
 			temp=$default_start_port
 		fi

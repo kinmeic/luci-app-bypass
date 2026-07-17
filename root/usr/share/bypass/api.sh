@@ -365,7 +365,11 @@ do_clear_nftset() {
 	fi
 	json_init
 	json_add_int code "$rc"
-	[ "$rc" = "0" ] && json_add_string msg "NFTSet cleared" || json_add_string error "$error"
+	if [ "$rc" = "0" ]; then
+		json_add_string msg "NFTSet cleared"
+	else
+		json_add_string error "$error"
+	fi
 	emit
 }
 
