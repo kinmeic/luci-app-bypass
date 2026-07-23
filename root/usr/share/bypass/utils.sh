@@ -533,19 +533,6 @@ host_from_url() {
 	echo "${f%%:*}"
 }
 
-host_from_endpoint() {
-	local endpoint=$1
-	case "$endpoint" in
-		\[*\]:*)
-			endpoint=${endpoint#\[}
-			printf '%s\n' "${endpoint%%\]*}"
-			;;
-		*)
-			printf '%s\n' "${endpoint%:*}"
-			;;
-	esac
-}
-
 # ------------------------------------------------------------------------------
 # WAN / local IP enumeration
 # ------------------------------------------------------------------------------

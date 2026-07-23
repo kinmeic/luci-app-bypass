@@ -11,7 +11,7 @@ OpenWrt 上的网关级透明分流代理。把两个各司其职的组件组合
 
 > **关于 BypassCore 的角色**：BypassCore 对本项目而言等同于 Passwall 的 Xray/sing-box，是不可替代的透明分流核心。它负责透明入口、规则匹配、DNS、Observatory 和 outbound；NaiveProxy 仅把 Naive HTTPS 节点转换成本机 SOCKS 上游。核心不可用时服务明确启动失败，不会回退到 NaiveProxy。
 >
-> BypassCore 源码：<https://github.com/kinmeic/BypassCore>，`make build` 即可编译。luci-app-bypass 1.8.0 要求 BypassCore v1.4.0（配置 schema 5）或更新版本，并按机器可读的 capability 清单校验所需能力，而不是只比较版本号。
+> BypassCore 源码：<https://github.com/kinmeic/BypassCore>，`make build` 即可编译。luci-app-bypass 1.8.1 要求 BypassCore v1.4.0（配置 schema 5）或更新版本，并按机器可读的 capability 清单校验所需能力，而不是只比较版本号。
 
 ---
 
@@ -127,18 +127,15 @@ config nodes 'naive1'
 config nodes 'wg1'
     option remarks 'WireGuard Node'
     option node_type 'wireguard'
+    option peer_public_key 'BASE64_ENDPOINT_PUBLIC_KEY'
+    option peer_address 'wg.example.com'
+    option peer_port '51820'
     option secret_key 'BASE64_PRIVATE_KEY'
     option public_key 'BASE64_LOCAL_PUBLIC_KEY'
-    list wireguard_address '10.0.0.2/32'
-    option mtu '1420'
-
-config wireguard_peer
-    option node 'wg1'
-    option public_key 'BASE64_PEER_PUBLIC_KEY'
-    option endpoint 'wg.example.com:51820'
-    list allowed_ips '0.0.0.0/0'
-    list allowed_ips '::/0'
     option pre_shared_key 'BASE64_PRESHARED_KEY' # 可选
+    list wireguard_address '10.0.0.2/32'
+    list wireguard_address 'fd00::2/128'
+    option mtu '1420'
     option keep_alive '25'
 
 config global_rules
@@ -207,7 +204,7 @@ luci-app-bypass/
 
 BypassCore 是必需的透明分流核心，角色等同于 Passwall 的 Xray/sing-box；不存在 NaiveProxy 核心模式或自动回退。BypassCore 缺失、不是 Linux ELF、配置不兼容或监听启动失败时，服务返回失败，并且不会安装透明代理防火墙规则或接管 dnsmasq。
 
-Basic Settings → Shunt Rule 为每条规则选择 Close、Default Node、Direct、Blackhole 或具体 NaiveProxy/WireGuard 节点；Rule Manage 的拖动顺序会显式持久化。虚拟 Default 行始终最后作为兜底，其值保存在 `global_rules.default_node`，不会创建或占用 `shunt_rules` section。每个被引用的 NaiveProxy 节点会启动独立本机 SOCKS 实例；WireGuard 节点则作为 BypassCore 进程内 outbound，均可被规则独立选择。
+Basic Settings → Shunt Rule 为每条规则选择 Close、Default Node、Direct、Blackhole 或具体 NaiveProxy/WireGuard 节点；Rule Manage 的拖动顺序会显式持久化。虚拟 Default 行始终最后作为兜底，其值保存在 `global_rules.default_node`，不会创建或占用 `shunt_rules` section。每个被引用的 NaiveProxy 节点会启动独立本机 SOCKS 实例；WireGuard 节点则作为 BypassCore 进程内 outbound，且每个节点只配置一个作为出口服务器的远端 peer，均可被规则独立选择。
 
 ### 多 WAN 出口
 

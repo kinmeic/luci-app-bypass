@@ -372,7 +372,7 @@ map_outbound_tag() {
 prepare_native_dns_policy_lists() {
 	local vps_rules="$TMP_ACL_PATH/vps-dns.rules"
 	local direct_rules="$TMP_ACL_PATH/direct-shunt-dns.rules"
-	local node address host sid rule peer peer_node endpoint
+	local node address host sid rule
 	: > "$vps_rules"
 	: > "$direct_rules"
 	while IFS= read -r node; do
@@ -387,14 +387,9 @@ prepare_native_dns_policy_lists() {
 	# same WireGuard node for Remote DNS can recursively wait on itself.
 	while IFS= read -r node; do
 		[ -n "$node" ] || continue
-		for peer in $(uci -q show "${CONFIG}" 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=wireguard_peer$/\1/p'); do
-			peer_node=$(config_n_get "$peer" node)
-			[ "$peer_node" = "$node" ] || continue
-			endpoint=$(config_n_get "$peer" endpoint)
-			host=$(host_from_endpoint "$endpoint")
-			printf '%s\n' "$host" | grep -qE '^[A-Za-z0-9.-]*[A-Za-z][A-Za-z0-9.-]*$' && \
-				printf 'full:%s\n' "$host" >> "$vps_rules"
-		done
+		host=$(config_n_get "$node" peer_address)
+		printf '%s\n' "$host" | grep -qE '^[A-Za-z0-9.-]*[A-Za-z][A-Za-z0-9.-]*$' && \
+			printf 'full:%s\n' "$host" >> "$vps_rules"
 	done < "$TMP_PATH/selected_wireguard_nodes"
 	if [ "$WRITE_IPSET_DIRECT" = "1" ]; then
 		for sid in $(shunt_rule_sections); do
@@ -489,7 +484,7 @@ gen_bypasscore_config() {
 			json_add_string tag block
 			json_add_string mode blackhole
 		json_close_object
-		local _node _node_port _node_type _wg_value _wg_mtu _peer _peer_node _peer_value _keep_alive
+		local _node _node_port _node_type _wg_value _wg_mtu _peer_address _peer_port _peer_endpoint _keep_alive
 		while read -r _node; do
 			[ -n "$_node" ] || continue
 			json_add_object ''
@@ -513,31 +508,36 @@ gen_bypasscore_config() {
 							_wg_mtu=1420
 						fi
 						json_add_int mtu "$_wg_mtu"
+						_peer_address=$(config_n_get "$_node" peer_address)
+						_peer_port=$(config_n_get "$_node" peer_port)
+						if [ -z "$_peer_address" ] || ! uint_in_range "$_peer_port" 1 65535; then
+							log 0 "WireGuard node [%s] has an invalid endpoint address or port." "$_node"
+							BYPASSCORE_CONFIG_ERROR=1
+						fi
+						case "$_peer_address" in
+							*:*) _peer_endpoint="[${_peer_address}]:${_peer_port}" ;;
+							*) _peer_endpoint="${_peer_address}:${_peer_port}" ;;
+						esac
 						json_add_array peers
-							for _peer in $(uci -q show "${CONFIG}" 2>/dev/null | sed -n 's/^bypass\.\([^.=]*\)=wireguard_peer$/\1/p'); do
-								_peer_node=$(config_n_get "$_peer" node)
-								[ "$_peer_node" = "$_node" ] || continue
-								json_add_object ''
-									json_add_string publicKey "$(config_n_get "$_peer" public_key)"
-									json_add_string endpoint "$(config_n_get "$_peer" endpoint)"
-									json_add_array allowedIPs
-										for _peer_value in $(printf '%s' "$(config_n_get "$_peer" allowed_ips)" | tr ',\n\r\t' '    '); do
-											[ -n "$_peer_value" ] && json_add_string '' "$_peer_value"
-										done
-									json_close_array
-									[ -n "$(config_n_get "$_peer" pre_shared_key)" ] && \
-										json_add_string preSharedKey "$(config_n_get "$_peer" pre_shared_key)"
-									_keep_alive=$(config_n_get "$_peer" keep_alive)
-									if [ -n "$_keep_alive" ]; then
-										if ! uint_in_range "$_keep_alive" 0 65535; then
-											log 0 "WireGuard peer [%s] has invalid keepalive [%s]." "$_peer" "$_keep_alive"
-											BYPASSCORE_CONFIG_ERROR=1
-										else
-											json_add_int keepAlive "$_keep_alive"
-										fi
+							json_add_object ''
+								json_add_string publicKey "$(config_n_get "$_node" peer_public_key)"
+								json_add_string endpoint "$_peer_endpoint"
+								json_add_array allowedIPs
+									json_add_string '' "0.0.0.0/0"
+									json_add_string '' "::/0"
+								json_close_array
+								[ -n "$(config_n_get "$_node" pre_shared_key)" ] && \
+									json_add_string preSharedKey "$(config_n_get "$_node" pre_shared_key)"
+								_keep_alive=$(config_n_get "$_node" keep_alive)
+								if [ -n "$_keep_alive" ]; then
+									if ! uint_in_range "$_keep_alive" 0 65535; then
+										log 0 "WireGuard node [%s] has invalid keepalive [%s]." "$_node" "$_keep_alive"
+										BYPASSCORE_CONFIG_ERROR=1
+									else
+										json_add_int keepAlive "$_keep_alive"
 									fi
-								json_close_object
-							done
+								fi
+							json_close_object
 						json_close_array
 					json_close_object
 				else
