@@ -104,6 +104,7 @@ function statusCard(type, icon, title, initLabel) {
 		card.addEventListener('click', function () {
 			span.className = 'yellow';
 			span.textContent = _('Check…');
+			span.title = '';
 			var url = ({
 				baidu: 'https://www.baidu.com',
 				google: 'https://www.google.com/generate_204',
@@ -119,6 +120,7 @@ function statusCard(type, icon, title, initLabel) {
 				} else {
 					span.className = 'red';
 					span.textContent = _('Problem detected!');
+					span.title = r.error || '';
 				}
 			});
 		});
