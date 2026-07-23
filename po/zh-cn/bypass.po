@@ -1078,6 +1078,9 @@ msgstr "UDP 测试"
 msgid "Connect test failed."
 msgstr "连接测试失败。"
 
+msgid "UDP Test verifies the peer handshake; URL Test also verifies tunneled DNS and TCP traffic."
+msgstr "UDP 测试验证对端握手；URL 测试还会验证隧道内 DNS 和 TCP 流量。"
+
 #: htdocs/luci-static/resources/view/bypass/node_list.js:61
 msgid "Actions"
 msgstr "操作"

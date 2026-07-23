@@ -90,7 +90,9 @@ return view.extend({
 			E('div', { class: 'cbi-section-descr' }, [
 				_('NaiveProxy and WireGuard outbound nodes.'),
 				' ',
-				_('WireGuard tests use the running BypassCore outbound, so the node must be selected by an active rule.')
+				_('WireGuard tests use the running BypassCore outbound, so the node must be selected by an active rule.'),
+				' ',
+				_('UDP Test verifies the peer handshake; URL Test also verifies tunneled DNS and TCP traffic.')
 			])
 		]);
 
@@ -169,7 +171,7 @@ return view.extend({
 					tcpProbeResult.textContent = '';
 					return;
 				}
-				tcpProbeResult.textContent = ms + ' ms';
+				tcpProbeResult.textContent = ms <= 0 ? '<1 ms' : ms + ' ms';
 				tcpProbeResult.style.color = latencyColor(ms);
 			}
 

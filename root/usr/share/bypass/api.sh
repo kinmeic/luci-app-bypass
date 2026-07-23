@@ -206,7 +206,7 @@ do_node_tcp_probe() {
 		return
 	fi
 
-	local address port request raw latency rc endpoint BYPASSCORE_FILE type
+	local address port raw latency rc endpoint BYPASSCORE_FILE type probe_error
 	type=$(node_type "$node_id")
 	if [ "$type" = "wireguard" ]; then
 		# Compatibility for a cached pre-upgrade LuCI page.
@@ -221,34 +221,29 @@ do_node_tcp_probe() {
 		json_add_string error "node has no address/port"
 	else
 		BYPASSCORE_FILE=$(config_t_get global bypasscore_file /usr/bin/bypasscore)
-		json_init
-		json_add_string host "$address"
-		json_add_int port "$port"
-		json_add_int timeoutMs 3000
-		request=$(json_dump)
-
-		if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/tcp-probe "$request" 2>&1); then
-			rc=0
+		case "$address" in
+			*:*) endpoint="[$address]:$port" ;;
+			*) endpoint="$address:$port" ;;
+		esac
+		# The Naive endpoint probe is deliberately independent of the Bypass
+		# service and node selection. BypassCore's standalone probe is the
+		# built-in replacement for the former external tcping dependency.
+		if is_bypasscore "$BYPASSCORE_FILE"; then
+			raw=$("$BYPASSCORE_FILE" -tcp-probe "$endpoint" -tcp-probe-timeout 3s -json 2>&1)
+			rc=$?
 		else
-			case "$address" in
-				*:*) endpoint="[$address]:$port" ;;
-				*) endpoint="$address:$port" ;;
-			esac
-			if is_bypasscore "$BYPASSCORE_FILE"; then
-				raw=$("$BYPASSCORE_FILE" -tcp-probe "$endpoint" -tcp-probe-timeout 3s -json 2>&1)
-				rc=$?
-			else
-				raw="BypassCore is unavailable"
-				rc=1
-			fi
+			raw="BypassCore is unavailable"
+			rc=1
 		fi
 		latency=$(printf '%s' "$raw" | sed -n 's/.*"latencyMs"[[:space:]]*:[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
 		[ -n "$latency" ] || rc=1
+		[ "$rc" -eq 0 ] 2>/dev/null || \
+			probe_error=$(printf '%.300s' "$(printf '%s\n' "$raw" | sed -n '1p' | sed 's/^error:[[:space:]]*//')")
 		json_init
 		json_add_int code "$rc"
 		[ -n "$latency" ] && json_add_string latency_ms "$latency"
 		if [ "$rc" -ne 0 ] 2>/dev/null; then
-			json_add_string error "TCP connect probe failed"
+			json_add_string error "TCP connect probe failed${probe_error:+: ${probe_error}}"
 		fi
 		json_add_string raw "$raw"
 	fi
