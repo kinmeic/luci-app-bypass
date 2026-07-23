@@ -1187,6 +1187,9 @@ msgstr "类型"
 msgid "NaiveProxy and WireGuard outbound nodes."
 msgstr "NaiveProxy 与 WireGuard 出站节点。"
 
+msgid "WireGuard tests use the running BypassCore outbound, so the node must be selected by an active rule."
+msgstr "WireGuard 测试使用运行中的 BypassCore 出站，因此该节点必须被已生效的规则选中。"
+
 msgid "not required"
 msgstr "无需安装"
 
@@ -1216,6 +1219,15 @@ msgstr "生成新的本地私钥，并自动推导对应的公钥。"
 
 msgid "Automatically filled when a local key pair is generated."
 msgstr "生成本地密钥对时自动填写。"
+
+msgid "Send this WireGuard endpoint connection through the selected OpenWrt network."
+msgstr "让此 WireGuard 端点连接从所选 OpenWrt 网络发出。"
+
+msgid "TCP connect probe failed."
+msgstr "TCP 连接测试失败。"
+
+msgid "URL test failed."
+msgstr "URL 测试失败。"
 
 msgid "Local Address"
 msgstr "本地地址"

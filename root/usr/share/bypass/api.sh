@@ -167,16 +167,19 @@ do_node_tcp_probe() {
 		emit
 		return
 	fi
-	if [ "$(node_type "$node_id")" != "naiveproxy" ]; then
-		json_add_int code -1
-		json_add_string error "TCP connect probe only applies to NaiveProxy nodes"
-		emit
-		return
-	fi
 
-	local address port request raw latency rc endpoint BYPASSCORE_FILE
-	address=$(config_n_get "$node_id" address)
-	port=$(config_n_get "$node_id" port)
+	local address port request raw latency rc endpoint BYPASSCORE_FILE type
+	type=$(node_type "$node_id")
+	if [ "$type" = "wireguard" ]; then
+		# A WireGuard endpoint is UDP, so a TCP handshake to peer_address would
+		# not test the tunnel. Probe a stable HTTPS endpoint through the active
+		# WireGuard outbound instead.
+		address=www.gstatic.com
+		port=443
+	else
+		address=$(config_n_get "$node_id" address)
+		port=$(config_n_get "$node_id" port)
+	fi
 	case "$port" in ''|*[!0-9]*) port=0 ;; esac
 	if [ -z "$address" ] || [ "$port" -lt 1 ] 2>/dev/null || [ "$port" -gt 65535 ] 2>/dev/null; then
 		json_add_int code -1
@@ -187,10 +190,14 @@ do_node_tcp_probe() {
 		json_add_string host "$address"
 		json_add_int port "$port"
 		json_add_int timeoutMs 3000
+		[ "$type" = "wireguard" ] && json_add_string outboundTag "proxy_${node_id}"
 		request=$(json_dump)
 
 		if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/tcp-probe "$request" 2>&1); then
 			rc=0
+		elif [ "$type" = "wireguard" ]; then
+			raw="BypassCore is not running or its control socket is unavailable"
+			rc=1
 		else
 			case "$address" in
 				*:*) endpoint="[$address]:$port" ;;
@@ -209,16 +216,21 @@ do_node_tcp_probe() {
 		json_init
 		json_add_int code "$rc"
 		[ -n "$latency" ] && json_add_string latency_ms "$latency"
-		[ "$rc" -eq 0 ] 2>/dev/null || json_add_string error "TCP connect probe failed"
+		if [ "$rc" -ne 0 ] 2>/dev/null; then
+			if [ "$type" = "wireguard" ]; then
+				json_add_string error "WireGuard TCP probe failed; the node must be selected by an active rule"
+			else
+				json_add_string error "TCP connect probe failed"
+			fi
+		fi
 		json_add_string raw "$raw"
 	fi
 	emit
 }
 
 # node_urltest <node_id> <probe_url> -> { code, use_time }
-# Mirrors passwall2's url_test_node: spin up a short-lived NaiveProxy SOCKS
-# listener for the node, curl the configured probe URL through it, and report
-# the total round-trip in ms. Torn down unconditionally afterward.
+# NaiveProxy mirrors passwall2 by using a short-lived SOCKS listener. WireGuard
+# is native to the running core, so its test uses the selected outbound directly.
 do_node_urltest() {
 	local node_id=$1 url_test_url=$2
 	json_init
@@ -230,13 +242,55 @@ do_node_urltest() {
 			return
 			;;
 	esac
-	local address port username password protocol
-	if [ "$(node_type "$node_id")" != "naiveproxy" ]; then
+	if [ "$(config_get_type "$node_id")" != "nodes" ]; then
 		json_add_int code -1
-		json_add_string error "URL test only applies to NaiveProxy nodes"
+		json_add_string error "node not found"
 		emit
 		return
 	fi
+
+	# The selector is intentionally not UCI configuration. Accept only the
+	# presets exposed by node_list.js so this root helper cannot become an
+	# arbitrary URL fetch primitive.
+	case "$url_test_url" in
+		https://cp.cloudflare.com/|\
+		https://www.gstatic.com/generate_204|\
+		https://www.google.com/generate_204|\
+		https://www.youtube.com/generate_204|\
+		https://connect.rom.miui.com/generate_204|\
+		https://connectivitycheck.platform.hicloud.com/generate_204|\
+		https://wifi.vivo.com.cn/generate_204) ;;
+		*) url_test_url=https://www.google.com/generate_204 ;;
+	esac
+
+	local type
+	type=$(node_type "$node_id")
+	if [ "$type" = "wireguard" ]; then
+		local request raw latency rc=1
+		json_init
+		json_add_string url "$url_test_url"
+		json_add_int timeoutMs 6000
+		json_add_string outboundTag "proxy_${node_id}"
+		request=$(json_dump)
+		if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/url-test "$request" 2>&1); then
+			latency=$(printf '%s' "$raw" | sed -n 's/.*"latencyMs"[[:space:]]*:[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
+			[ -n "$latency" ] && rc=0
+		else
+			raw="BypassCore is not running or its control socket is unavailable"
+		fi
+		json_init
+		json_add_int code "$rc"
+		if [ "$rc" -eq 0 ]; then
+			json_add_string use_time "$(printf '%s\n' "$latency" | awk '{printf "%d", $1}')"
+		else
+			json_add_string error "WireGuard URL test failed; the node must be selected by an active rule"
+		fi
+		json_add_string raw "$raw"
+		emit
+		return
+	fi
+
+	local address port username password protocol
 	address=$(config_n_get "$node_id" address)
 	port=$(config_n_get "$node_id" port)
 	username=$(config_n_get "$node_id" username)
@@ -257,20 +311,6 @@ do_node_urltest() {
 		return
 	fi
 	case "$protocol" in quic) ;; *) protocol=https ;; esac
-
-	# The selector is intentionally not UCI configuration. Accept only the
-	# presets exposed by node_list.js so this root helper cannot become an
-	# arbitrary URL fetch primitive.
-	case "$url_test_url" in
-		https://cp.cloudflare.com/|\
-		https://www.gstatic.com/generate_204|\
-		https://www.google.com/generate_204|\
-		https://www.youtube.com/generate_204|\
-		https://connect.rom.miui.com/generate_204|\
-		https://connectivitycheck.platform.hicloud.com/generate_204|\
-		https://wifi.vivo.com.cn/generate_204) ;;
-		*) url_test_url=https://www.google.com/generate_204 ;;
-	esac
 
 	# Build a minimal SOCKS config (127.0.0.1 only; no egress pinning).
 	local tag="url_test_${node_id}"
@@ -315,6 +355,7 @@ do_node_urltest() {
 	[ -n "$pid" ] && kill -9 "$pid" >/dev/null 2>&1
 	rm -f "$cfg" "$log" "$TMP_PID_PATH/${tag}.pid"
 
+	json_init
 	if [ -n "$use_time" ]; then
 		json_add_int code 0
 		json_add_string use_time "$use_time"
@@ -581,10 +622,10 @@ geo_lookup_egress() {
 		proxy_*)
 			node=${tag#proxy_}
 			label=$(config_n_get "$node" remarks "$node")
+			logical=$(node_egress_interface "$node")
 			if [ "$(node_type "$node")" = "wireguard" ]; then
 				printf '%s\n' "Outbound: WireGuard node [$label]"
 			else
-				logical=$(node_egress_interface "$node")
 				printf '%s\n' "Outbound: NaiveProxy node [$label]"
 			fi
 			;;

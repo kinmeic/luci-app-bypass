@@ -87,7 +87,11 @@ return view.extend({
 			currentUrl = URL_TEST_PRESETS[2][0];
 
 		var container = E('div', { class: 'cbi-map' }, [
-			E('div', { class: 'cbi-section-descr' }, _('NaiveProxy and WireGuard outbound nodes.'))
+			E('div', { class: 'cbi-section-descr' }, [
+				_('NaiveProxy and WireGuard outbound nodes.'),
+				' ',
+				_('WireGuard tests use the running BypassCore outbound, so the node must be selected by an active rule.')
+			])
 		]);
 
 		// This is a diagnostic input, not service configuration. Keeping it out of
@@ -152,6 +156,7 @@ return view.extend({
 						} else {
 							tcpProbeResult.textContent = '---';
 							tcpProbeResult.style.color = COL.red;
+							ui.addNotification(null, E('p', {}, r.error || _('TCP connect probe failed.')));
 						}
 					});
 				}
@@ -166,7 +171,10 @@ return view.extend({
 				tcpProbeResult.style.color = latencyColor(ms);
 			}
 
-			if (nodeType === 'naiveproxy') {
+			var hasEndpoint = nodeType === 'wireguard'
+				? !!(sec.peer_address && sec.peer_port)
+				: !!(sec.address && sec.port);
+			if (hasEndpoint) {
 				tcpProbeCell.appendChild(tcpProbeLink);
 				tcpProbeCell.appendChild(tcpProbeResult);
 				var cached = getCachedTcpProbe(sid);
@@ -175,10 +183,9 @@ return view.extend({
 				tcpProbeCell.appendChild(E('span', { style: 'color:#adb5bd' }, '---'));
 			}
 
-			// URL Test column: needs address+port to dial the node. Nodes without
-			// them show an inert placeholder.
+			// Both node types need a configured endpoint. WireGuard URL tests
+			// are executed by the active native outbound in BypassCore.
 			var urltestCell = E('td', { class: 'td cbi-value-field', style: 'white-space:nowrap' });
-			var hasEndpoint = nodeType === 'naiveproxy' && !!(sec.address && sec.port);
 			if (!hasEndpoint) {
 				urltestCell.appendChild(E('span', { style: 'color:#adb5bd' }, '---'));
 			} else {
@@ -206,6 +213,7 @@ return view.extend({
 							} else {
 								urltestResult.textContent = '---';
 								urltestResult.style.color = COL.red;
+								ui.addNotification(null, E('p', {}, r.error || _('URL test failed.')));
 							}
 						});
 					}

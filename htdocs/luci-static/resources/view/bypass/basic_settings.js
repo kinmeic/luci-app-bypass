@@ -310,7 +310,8 @@ return view.extend({
 		uci.sections('bypass', 'nodes').forEach(function (node) {
 			var label = node.remarks || node['.name'];
 			if (node.node_type === 'wireguard') {
-				o.value(node['.name'], label + ' [WireGuard]');
+				var wgEgress = node.egress_interface || _('system default');
+				o.value(node['.name'], label + ' [WireGuard / ' + wgEgress + ']');
 			} else {
 				var rulesSid = firstSection('global_rules');
 				var egress = node.egress_interface || (rulesSid && uci.get('bypass', rulesSid, 'default_naive_interface')) || _('system default');

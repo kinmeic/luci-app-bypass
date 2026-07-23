@@ -94,8 +94,9 @@ return view.extend({
 		o.password = true;
 		o.depends('node_type', 'naiveproxy');
 
-		o = s.option(form.ListValue, 'egress_interface', _('Egress Interface'),
+		o = s.option(form.ListValue, '_naive_egress_interface', _('Egress Interface'),
 			_('Send this NaiveProxy node\'s server connection through the selected OpenWrt network. The first option inherits Default Naive Interface.'));
+		o.ucioption = 'egress_interface';
 		o.value('', _('(use default naive interface)'));
 		ifaces.forEach(function (iface) { o.value(iface, iface); });
 		o.depends('node_type', 'naiveproxy');
@@ -130,10 +131,18 @@ return view.extend({
 
 		var publicOption = s.option(form.Value, 'public_key', _('Local Public Key'));
 		publicOption.rmempty = false;
-		publicOption.readonly = true;
 		publicOption.validate = validateWGKey;
 		publicOption.description = _('Automatically filled when a local key pair is generated.');
 		publicOption.depends('node_type', 'wireguard');
+		publicOption.renderWidget = function (sectionId, _optionIndex, cfgvalue) {
+			return new ui.Textfield((cfgvalue != null) ? cfgvalue : '', {
+				id: this.cbid(sectionId),
+				optional: false,
+				validate: this.getValidator(sectionId),
+				readonly: true,
+				disabled: this.map.readonly
+			}).render();
+		};
 
 		var pskOption = s.option(form.Value, 'pre_shared_key', _('Pre-Shared Key'));
 		pskOption.password = true;
@@ -187,6 +196,13 @@ return view.extend({
 		o.datatype = 'range(0,65535)';
 		o.placeholder = '25';
 		o.description = _('Seconds; leave empty or use 0 to disable.');
+		o.depends('node_type', 'wireguard');
+
+		o = s.option(form.ListValue, '_wireguard_egress_interface', _('Egress Interface'),
+			_('Send this WireGuard endpoint connection through the selected OpenWrt network.'));
+		o.ucioption = 'egress_interface';
+		o.value('', _('(system default route)'));
+		ifaces.forEach(function (iface) { o.value(iface, iface); });
 		o.depends('node_type', 'wireguard');
 
 		return m.render();
