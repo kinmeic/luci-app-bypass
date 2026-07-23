@@ -1066,6 +1066,18 @@ msgstr "NaiveProxy 节点（HTTPS/QUIC）。"
 msgid "TCP Connect"
 msgstr "TCP 连接"
 
+msgid "Connect Test"
+msgstr "连接测试"
+
+msgid "TCP Test"
+msgstr "TCP 测试"
+
+msgid "UDP Test"
+msgstr "UDP 测试"
+
+msgid "Connect test failed."
+msgstr "连接测试失败。"
+
 #: htdocs/luci-static/resources/view/bypass/node_list.js:61
 msgid "Actions"
 msgstr "操作"

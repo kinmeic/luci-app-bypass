@@ -159,9 +159,16 @@ prepare_selected_nodes() {
 		esac
 	done < "$TMP_PATH/selected_nodes"
 
-	# Keep mappings stable only while the service is actually active. Status or
-	# preview calls made while stopped must not reserve stale ports for startup.
-	[ -s "$TMP_PATH/node_ports" ] && busybox pgrep -f "$TMP_BIN_PATH/" >/dev/null 2>&1 && return 0
+	# Keep mappings stable while the active core still uses exactly this Naive
+	# node set. Checking the core lifecycle is more reliable than matching a
+	# carrier argv, and comparing IDs prevents a rule change from retaining a
+	# stale port map.
+	if [ -s "$TMP_PATH/node_ports" ] && process_alive bypasscore; then
+		local mapped_nodes selected_naive
+		mapped_nodes=$(awk 'NF { print $1 }' "$TMP_PATH/node_ports" 2>/dev/null | sort -u)
+		selected_naive=$(sort -u "$TMP_PATH/selected_naive_nodes" 2>/dev/null)
+		[ "$mapped_nodes" = "$selected_naive" ] && return 0
+	fi
 	: > "$TMP_PATH/node_ports"
 	while read -r sid; do
 		[ -n "$sid" ] || continue

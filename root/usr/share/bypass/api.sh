@@ -32,11 +32,36 @@ control_error_message() {
 # status -> { running, naive_present, bypasscore_present,
 #             use_tables, egress_ifaces, redir_port }
 do_status() {
-	get_config
-	prepare_selected_nodes
-	local naive_present=0 bypasscore_present=0 running=0
+	local BYPASSCORE_FILE NAIVE_BIN DEFAULT_NODE
+	local naive_present=0 bypasscore_present=0 running=0 sid outbound node kind
+	local selected_nodes="" selected_nodes_count=0 selected_naive_count=0 selected_wireguard_count=0
+	BYPASSCORE_FILE=$(first_type "$(config_t_get global bypasscore_file /usr/bin/bypasscore)" bypasscore)
+	NAIVE_BIN=$(first_type "$(config_t_get global naive_file /usr/bin/naive)" naive)
+	DEFAULT_NODE=$(config_t_get global_rules default_node _direct)
 	[ -n "$NAIVE_BIN" ] && naive_present=1
-	is_bypasscore "$BYPASSCORE_FILE" && bypasscore_present=1
+	[ -x "$BYPASSCORE_FILE" ] && bypasscore_present=1
+	selected_nodes=$(
+		{
+			for sid in $(shunt_rule_sections); do
+				[ "$(config_n_get "$sid" is_default 0)" = "1" ] && continue
+				outbound=$(config_n_get "$sid" outbound)
+				[ "$(config_get_type "$outbound")" = "nodes" ] && printf '%s\n' "$outbound"
+			done
+			[ "$(config_get_type "$DEFAULT_NODE")" = "nodes" ] && printf '%s\n' "$DEFAULT_NODE"
+		} | awk 'NF && !seen[$0]++'
+	)
+	while IFS= read -r node; do
+		[ -n "$node" ] || continue
+		selected_nodes_count=$((selected_nodes_count + 1))
+		kind=$(node_type "$node")
+		if [ "$kind" = "wireguard" ]; then
+			selected_wireguard_count=$((selected_wireguard_count + 1))
+		else
+			selected_naive_count=$((selected_naive_count + 1))
+		fi
+	done <<-EOF
+	$selected_nodes
+	EOF
 	# BypassCore plus the ready marker represent a fully installed firewall/DNS
 	# path; structured readiness already covers all configured inbounds.
 	[ -f /var/lock/bypass_ready.lock ] && process_alive bypasscore && running=1
@@ -44,7 +69,7 @@ do_status() {
 	use_tables=$(get_cache_var USE_TABLES)
 	egress=$(get_cache_var EGRESS_IFACES)
 	active_redir_port=$(get_cache_var ACL_GLOBAL_redir_port)
-	if core_status=$(bypasscore_control_request GET /v1/status 2>/dev/null); then
+	if core_status=$(bypasscore_control_request GET /v1/ready 2>/dev/null); then
 		printf '%s' "$core_status" | grep -Eq '"ready"[[:space:]]*:[[:space:]]*true' && core_ready=1
 		core_revision=$(printf '%s' "$core_status" | sed -n 's/.*"configRevision"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
 		core_hash=$(printf '%s' "$core_status" | sed -n 's/.*"configHash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
@@ -58,17 +83,20 @@ do_status() {
 	json_add_int core_ready "$core_ready"
 	json_add_string core_revision "$core_revision"
 	json_add_string core_config_hash "$core_hash"
-	json_add_string core_version "$("$BYPASSCORE_FILE" --version 2>/dev/null | awk 'NR == 1 { print $2 }')"
 	json_add_string use_tables "$use_tables"
 	json_add_string egress_ifaces "$egress"
 	# Retain the old singular key for callers written before per-node egress.
 	json_add_string egress_iface "$egress"
 	json_add_string redir_port "$active_redir_port"
 	json_add_string version "$(cat "$APP_PATH/version" 2>/dev/null)"
-	json_add_string default_node "$(default_proxy_node)"
-	json_add_int selected_nodes "$(awk 'NF { n++ } END { print n + 0 }' "$TMP_PATH/selected_nodes" 2>/dev/null)"
-	json_add_int selected_naive_nodes "$(awk 'NF { n++ } END { print n + 0 }' "$TMP_PATH/selected_naive_nodes" 2>/dev/null)"
-	json_add_int selected_wireguard_nodes "$(awk 'NF { n++ } END { print n + 0 }' "$TMP_PATH/selected_wireguard_nodes" 2>/dev/null)"
+	if [ "$(config_get_type "$DEFAULT_NODE")" = "nodes" ]; then
+		json_add_string default_node "$DEFAULT_NODE"
+	else
+		json_add_string default_node "$(printf '%s\n' "$selected_nodes" | awk 'NF { print; exit }')"
+	fi
+	json_add_int selected_nodes "$selected_nodes_count"
+	json_add_int selected_naive_nodes "$selected_naive_count"
+	json_add_int selected_wireguard_nodes "$selected_wireguard_count"
 	emit
 }
 
@@ -178,26 +206,15 @@ do_node_tcp_probe() {
 		return
 	fi
 
-	local address port request raw latency rc endpoint BYPASSCORE_FILE type control_error
+	local address port request raw latency rc endpoint BYPASSCORE_FILE type
 	type=$(node_type "$node_id")
 	if [ "$type" = "wireguard" ]; then
-		get_config
-		prepare_selected_nodes
-		if ! grep -Fxq "$node_id" "$TMP_PATH/selected_wireguard_nodes" 2>/dev/null; then
-			json_add_int code -1
-			json_add_string error "WireGuard node is not selected by an active rule or the Default row"
-			emit
-			return
-		fi
-		# A WireGuard endpoint is UDP, so a TCP handshake to peer_address would
-		# not test the tunnel. Probe a stable HTTPS endpoint through the active
-		# WireGuard outbound instead.
-		address=www.gstatic.com
-		port=443
-	else
-		address=$(config_n_get "$node_id" address)
-		port=$(config_n_get "$node_id" port)
+		# Compatibility for a cached pre-upgrade LuCI page.
+		do_node_udp_probe "$node_id"
+		return
 	fi
+	address=$(config_n_get "$node_id" address)
+	port=$(config_n_get "$node_id" port)
 	case "$port" in ''|*[!0-9]*) port=0 ;; esac
 	if [ -z "$address" ] || [ "$port" -lt 1 ] 2>/dev/null || [ "$port" -gt 65535 ] 2>/dev/null; then
 		json_add_int code -1
@@ -207,20 +224,11 @@ do_node_tcp_probe() {
 		json_init
 		json_add_string host "$address"
 		json_add_int port "$port"
-		if [ "$type" = "wireguard" ]; then
-			# Include the lazy device initialization and first handshake.
-			json_add_int timeoutMs 6000
-		else
-			json_add_int timeoutMs 3000
-		fi
-		[ "$type" = "wireguard" ] && json_add_string outboundTag "proxy_${node_id}"
+		json_add_int timeoutMs 3000
 		request=$(json_dump)
 
 		if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/tcp-probe "$request" 2>&1); then
 			rc=0
-		elif [ "$type" = "wireguard" ]; then
-			raw="BypassCore is not running or its control socket is unavailable"
-			rc=1
 		else
 			case "$address" in
 				*:*) endpoint="[$address]:$port" ;;
@@ -236,19 +244,64 @@ do_node_tcp_probe() {
 		fi
 		latency=$(printf '%s' "$raw" | sed -n 's/.*"latencyMs"[[:space:]]*:[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
 		[ -n "$latency" ] || rc=1
-		[ "$rc" -eq 0 ] 2>/dev/null || control_error=$(control_error_message "$raw")
 		json_init
 		json_add_int code "$rc"
 		[ -n "$latency" ] && json_add_string latency_ms "$latency"
 		if [ "$rc" -ne 0 ] 2>/dev/null; then
-			if [ "$type" = "wireguard" ]; then
-				json_add_string error "WireGuard TCP probe failed${control_error:+: ${control_error}}"
-			else
-				json_add_string error "TCP connect probe failed"
-			fi
+			json_add_string error "TCP connect probe failed"
 		fi
 		json_add_string raw "$raw"
 	fi
+	emit
+}
+
+# node_udp_probe <node_id> -> { code, latency_ms, raw }
+# WireGuard is carried over UDP, so its Connect Test verifies the peer
+# handshake rather than coupling transport health to an arbitrary TCP server.
+do_node_udp_probe() {
+	local node_id=$1 request raw latency rc control_error
+	json_init
+	case "$node_id" in
+		''|*[!A-Za-z0-9_-]*)
+			json_add_int code -1
+			json_add_string error "invalid node"
+			emit
+			return
+			;;
+	esac
+	if [ "$(config_get_type "$node_id")" != "nodes" ] || [ "$(node_type "$node_id")" != "wireguard" ]; then
+		json_add_int code -1
+		json_add_string error "WireGuard node not found"
+		emit
+		return
+	fi
+	get_config
+	prepare_selected_nodes
+	if ! grep -Fxq "$node_id" "$TMP_PATH/selected_wireguard_nodes" 2>/dev/null; then
+		json_add_int code -1
+		json_add_string error "WireGuard node is not selected by an active rule or the Default row"
+		emit
+		return
+	fi
+	json_init
+	json_add_int timeoutMs 6000
+	json_add_string outboundTag "proxy_${node_id}"
+	request=$(json_dump)
+	if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/handshake-probe "$request" 2>&1); then
+		rc=0
+	else
+		rc=1
+	fi
+	latency=$(printf '%s' "$raw" | sed -n 's/.*"latencyMs"[[:space:]]*:[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
+	[ -n "$latency" ] || rc=1
+	[ "$rc" -eq 0 ] 2>/dev/null || control_error=$(control_error_message "$raw")
+	json_init
+	json_add_int code "$rc"
+	[ -n "$latency" ] && json_add_string latency_ms "$latency"
+	if [ "$rc" -ne 0 ] 2>/dev/null; then
+		json_add_string error "WireGuard UDP handshake failed${control_error:+: ${control_error}}"
+	fi
+	json_add_string raw "$raw"
 	emit
 }
 
@@ -1006,7 +1059,7 @@ do_set_direct_ip() {
 }
 
 usage() {
-	echo "Usage: $0 {status|route_test|observe|resolve|node_tcp_probe|node_urltest|wireguard_keypair|wireguard_psk|config_preview|rule_update|log_tail|clear_log|clear_nftset|interfaces|connect_status|geo_view|create_backup|restore_backup|reset_config|get_direct_ip|set_direct_ip} [args]" >&2
+	echo "Usage: $0 {status|route_test|observe|resolve|node_tcp_probe|node_udp_probe|node_urltest|wireguard_keypair|wireguard_psk|config_preview|rule_update|log_tail|clear_log|clear_nftset|interfaces|connect_status|geo_view|create_backup|restore_backup|reset_config|get_direct_ip|set_direct_ip} [args]" >&2
 }
 
 main() {
@@ -1018,6 +1071,7 @@ main() {
 		observe)        do_observe ;;
 		resolve)        do_resolve "$1" ;;
 		node_tcp_probe) do_node_tcp_probe "$1" ;;
+		node_udp_probe) do_node_udp_probe "$1" ;;
 		node_urltest)   do_node_urltest "$1" "$2" ;;
 		wireguard_keypair) do_wireguard_keypair ;;
 		wireguard_psk) do_wireguard_psk ;;
