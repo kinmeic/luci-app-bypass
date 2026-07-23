@@ -30,9 +30,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.7.1)'
+        description: 'Release version (e.g. 1.8.0)'
         required: true
-        default: '1.7.1'
+        default: '1.8.0'
 
 permissions:
   contents: write
