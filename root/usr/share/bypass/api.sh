@@ -233,10 +233,7 @@ do_node_tcp_probe() {
 		if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/tcp-probe "$request" 2>&1); then
 			rc=0
 		else
-			case "$address" in
-				*:*) endpoint="[$address]:$port" ;;
-				*) endpoint="$address:$port" ;;
-			esac
+			endpoint="$(host_for_url "$address"):$port"
 			if is_bypasscore "$BYPASSCORE_FILE"; then
 				raw=$("$BYPASSCORE_FILE" -tcp-probe "$endpoint" -tcp-probe-timeout 3s -json 2>&1)
 				rc=$?
@@ -415,8 +412,8 @@ do_node_urltest() {
 		password=$(uri_encode_userinfo "$password") || { json_add_int code -1; json_add_string error "bad credentials"; emit; return; }
 		auth="${username}:${password}@"
 	fi
-	local server_host=$address
-	echo "$address" | grep -qE "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" && server_host="[$address]"
+	local server_host
+	server_host=$(host_for_url "$address")
 
 	mkdir -p "$TMP_PATH2"
 	local cfg="$TMP_PATH2/${tag}.json" log="$TMP_PATH2/${tag}.log"
@@ -430,16 +427,20 @@ do_node_urltest() {
 	local use_time="" http_code
 	if wait_for_listener "$tag" "$socks_port" tcp 8 "$log"; then
 		# % output: "<http_code> <time_total seconds>"
-		local out
+		local out curl_rc
 		out=$(curl -o /dev/null -s -I --connect-timeout 3 --max-time 6 \
 			-x "socks5h://127.0.0.1:${socks_port}" \
 			-w '%{http_code} %{time_total}' "$url_test_url" 2>/dev/null)
+		curl_rc=$?
 		http_code="${out%% *}"
-		case "$http_code" in ''|0) ;; *)
-			local t="${out#* }"
-			use_time=$(echo "$t" | awk '{printf "%d", $1*1000}')
-		;;
-		esac
+		if [ "$curl_rc" -eq 0 ] 2>/dev/null; then
+			case "$http_code" in ''|0|000) ;;
+				*)
+					local t="${out#* }"
+					use_time=$(echo "$t" | awk '{printf "%d", $1*1000}')
+					;;
+			esac
+		fi
 	fi
 
 	# Teardown regardless of outcome.
@@ -819,14 +820,19 @@ do_geo_view() {
 	local geo_type file_path out rc route_info
 	if [ "$action" = "lookup" ]; then
 		# IP → geoip; anything else → geosite.
-		if echo "$value" | grep -qE "^([0-9]{1,3}[\.]){3}[0-9]{1,3}$" || \
-		   echo "$value" | grep -qE "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}"; then
-			geo_type="geoip"
-			file_path="$geoip_path"
-		else
-			geo_type="geosite"
-			file_path="$geosite_path"
-		fi
+		value=$(strip_host_brackets "$value")
+		case "$value" in
+			*:*) geo_type="geoip"; file_path="$geoip_path" ;;
+			*)
+				if echo "$value" | grep -qE "^([0-9]{1,3}[\.]){3}[0-9]{1,3}$"; then
+					geo_type="geoip"
+					file_path="$geoip_path"
+				else
+					geo_type="geosite"
+					file_path="$geosite_path"
+				fi
+				;;
+		esac
 		out=$("$bin" -type "$geo_type" -action lookup -input "$file_path" -value "$value" -lowmem=true 2>&1)
 		rc=$?
 		if [ "$rc" = "0" ] && [ -n "$out" ]; then

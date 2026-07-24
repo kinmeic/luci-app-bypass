@@ -228,8 +228,8 @@ run_naive_node() {
 	[ -z "$address" ] || [ -z "$port" ] && { log 0 "Node [%s] has no address/port, skip naive." "$node"; return 1; }
 
 	# IPv6 host bracketing for the proxy URL.
-	local server_host=$address
-	echo "$address" | grep -qE "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}" && server_host="[$address]"
+	local server_host
+	server_host=$(host_for_url "$address")
 
 	local cfg_dir="${TMP_ACL_PATH}/nodes"
 	mkdir -p "$cfg_dir"
@@ -579,10 +579,7 @@ gen_bypasscore_config() {
 							log 0 "WireGuard node [%s] has an invalid endpoint address or port." "$_node"
 							BYPASSCORE_CONFIG_ERROR=1
 						fi
-						case "$_peer_address" in
-							*:*) _peer_endpoint="[${_peer_address}]:${_peer_port}" ;;
-							*) _peer_endpoint="${_peer_address}:${_peer_port}" ;;
-						esac
+						_peer_endpoint="$(host_for_url "$_peer_address"):${_peer_port}"
 						json_add_array peers
 							json_add_object ''
 								json_add_string publicKey "$(config_n_get "$_node" peer_public_key)"
