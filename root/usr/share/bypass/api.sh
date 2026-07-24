@@ -357,9 +357,12 @@ do_node_urltest() {
 		json_init
 		json_add_string url "$url_test_url"
 		# The first probe may initialize the device and negotiate a handshake.
+		# No resolverTag: BypassCore resolves the target through the tested
+		# WireGuard outbound first, then through the core DNS chain. Pinning a
+		# direct resolver would falsely require the remote DNS to be reachable
+		# without the tunnel, contradicting remote_dns_detour=remote.
 		json_add_int timeoutMs 10000
 		json_add_string outboundTag "proxy_${node_id}"
-		json_add_string resolverTag url_test_direct
 		request=$(json_dump)
 		if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/url-test "$request" 2>&1); then
 			latency=$(printf '%s' "$raw" | sed -n 's/.*"latencyMs"[[:space:]]*:[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
@@ -641,7 +644,6 @@ do_connect_status() {
 			json_add_string url "$url"
 			json_add_int timeoutMs 12000
 			json_add_string outboundTag "proxy_${node}"
-			json_add_string resolverTag url_test_direct
 			request=$(json_dump)
 			if process_alive bypasscore && raw=$(bypasscore_control_request POST /v1/network/url-test "$request" 2>&1); then
 				out=$(printf '%s' "$raw" | sed -n 's/.*"latencyMs"[[:space:]]*:[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
