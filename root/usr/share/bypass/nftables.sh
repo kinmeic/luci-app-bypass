@@ -332,27 +332,27 @@ EOF
 			}"
 		fi
 		# Preserve mwan3/PBR marks in the low bits and reserve one high bit only.
-		while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+		while ip rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 		ip rule add priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null || {
 			log 0 "Could not install the TPROXY policy rule."
 			return 1
 		}
 		ip route replace local 0.0.0.0/0 dev lo proto 99 table 20100 2>/dev/null || {
-			ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null
+			ip rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null
 			log 0 "Could not install the TPROXY local route."
 			return 1
 		}
 		if [ "$PROXY_IPV6" = "1" ]; then
-			while ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null; do :; done
+			while ip -6 rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 			ip -6 rule add priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null || {
-				while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+				while ip rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 				ip route flush table 20100 proto 99 2>/dev/null
 				log 0 "Could not install the IPv6 TPROXY policy rule."
 				return 1
 			}
 			ip -6 route replace local ::/0 dev lo proto 99 table 20101 2>/dev/null || {
-				ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null
-				while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+				ip -6 rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null
+				while ip rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 				ip route flush table 20100 proto 99 2>/dev/null
 				log 0 "Could not install the IPv6 TPROXY local route."
 				return 1
@@ -367,9 +367,9 @@ EOF
 	${mangle6_chain}
 	}"
 	nft_apply "$ruleset" || {
-		while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+		while ip rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 		ip route flush table 20100 proto 99 2>/dev/null
-		while ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null; do :; done
+		while ip -6 rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 		ip -6 route flush table 20101 proto 99 2>/dev/null
 		log 0 "nft ruleset apply failed."
 		return 1
@@ -505,9 +505,9 @@ EOF
 
 nft_stop() {
 	# Remove tproxy local-route scaffolding if present.
-	while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+	while ip rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 	ip route flush table 20100 proto 99 2>/dev/null
-	while ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null; do :; done
+	while ip -6 rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 	ip -6 route flush table 20101 proto 99 2>/dev/null
 	[ -n "$NFT" ] && $NFT delete table inet ${NFT_TABLE} 2>/dev/null
 	rm -f "$INCLUDE_FILE" 2>/dev/null

@@ -734,7 +734,7 @@ get_egress_runtime() {
 # free afterwards.
 reclaim_egress_priority() {
 	local ip_cmd=$1 priority=$2 base=${NAIVE_EGRESS_TABLE:-20200}
-	local conflicts line ltable
+	local conflicts line ltable attrs
 	conflicts=$($ip_cmd rule show 2>/dev/null | awk -v p="${priority}:" '$1 == p')
 	[ -n "$conflicts" ] || return 0
 	printf '%s\n' "$conflicts" | while IFS= read -r line; do
@@ -742,10 +742,15 @@ reclaim_egress_priority() {
 		log 0 "Policy-rule priority [%s] is held by: %s" "$priority" "$line"
 		ltable=$(printf '%s\n' "$line" | awk '{ for (i = 1; i <= NF; i++) if ($i == "lookup" || $i == "table") { print $(i+1); exit } }')
 		case "$ltable" in ''|*[!0-9]*) continue ;; esac
-		if [ "$ltable" -ge "$base" ] 2>/dev/null && [ "$ltable" -le $((base + 64)) ] 2>/dev/null; then
-			while $ip_cmd rule del priority "$priority" lookup "$ltable" 2>/dev/null; do :; done
-			log 0 "Reclaimed an orphaned bypass egress rule at priority %s (table %s)." "$priority" "$ltable"
-		fi
+		[ "$ltable" -ge "$base" ] 2>/dev/null && [ "$ltable" -le $((base + 64)) ] 2>/dev/null || continue
+		# Replay the exact selector set printed by ip(8). A subset delete such as
+		# "priority + lookup" does not match rules carrying a to= selector on some
+		# iproute2 builds, which is how this orphan got stranded in the first place.
+		attrs=$(printf '%s\n' "$line" | sed 's/^[^:]*:[[:space:]]*//')
+		while $ip_cmd rule del $attrs 2>/dev/null; do :; done
+		# Fallback for rule-show formats whose replay ip(8) does not accept.
+		while $ip_cmd rule del priority "$priority" lookup "$ltable" 2>/dev/null; do :; done
+		log 0 "Reclaimed an orphaned bypass egress rule at priority %s (table %s)." "$priority" "$ltable"
 	done
 	! $ip_cmd rule show 2>/dev/null | awk -v p="${priority}:" '$1 == p { found=1 } END { exit !found }'
 }
@@ -780,6 +785,21 @@ setup_egress_routing() {
 		log 0 "IPv6 policy-rule priority [%s] is already in use; choose another base priority." "$priority"
 		return 1
 	fi
+	# Some busybox ip builds reject route/rule table IDs above 255 in some
+	# subcommands while accepting them in others. Probe the target table with
+	# throwaway objects so a capability gap surfaces as a named error instead of
+	# a silent abort, and so the fix (a lower naive_egress_table) is actionable.
+	local probe_err
+	probe_err=$(ip route replace blackhole 198.51.100.255 proto 99 table "$table" 2>&1) || {
+		log 0 "ip(8) rejects egress route table [%s]: %s. Set bypass.@global[0].naive_egress_table to a value of 255 or lower (e.g. 100)." "$table" "$probe_err"
+		return 1
+	}
+	ip route del blackhole 198.51.100.255 proto 99 table "$table" 2>/dev/null
+	probe_err=$(ip rule add priority "$priority" to 198.51.100.254 lookup "$table" 2>&1) || {
+		log 0 "ip(8) rejects egress rule table [%s]: %s. Set bypass.@global[0].naive_egress_table to a value of 255 or lower (e.g. 100)." "$table" "$probe_err"
+		return 1
+	}
+	while ip rule del priority "$priority" to 198.51.100.254 2>/dev/null; do :; done
 	if [ -s "$ipv4_file" ] && [ -z "$EGRESS_GATEWAY" ] && \
 	   ! ip -4 route show default 2>/dev/null | grep -q " dev $EGRESS_DEVICE\( \|$\)"; then
 		log 0 "%s resolved IPv4 addresses, but interface [%s] has no usable IPv4 route." "$label" "$iface"
@@ -794,24 +814,41 @@ setup_egress_routing() {
 	# the common teardown routine without leaking routes or policy rules.
 	touch "$TMP_PATH/egress_tables" "$TMP_PATH/egress_rules"
 	printf '%s %s\n' "$table" "$iface" >> "$TMP_PATH/egress_tables"
+	local route_err="$TMP_PATH/egress_route_err"
 	if [ -s "$ipv4_file" ]; then
 		if [ -n "$EGRESS_GATEWAY" ]; then
-			ip route replace default via "$EGRESS_GATEWAY" dev "$EGRESS_DEVICE" onlink proto 99 table "$table" 2>/dev/null \
-				|| ip route replace default via "$EGRESS_GATEWAY" dev "$EGRESS_DEVICE" proto 99 table "$table" 2>/dev/null \
-				|| { teardown_egress_routing; return 1; }
+			ip route replace default via "$EGRESS_GATEWAY" dev "$EGRESS_DEVICE" onlink proto 99 table "$table" 2>"$route_err" || \
+				ip route replace default via "$EGRESS_GATEWAY" dev "$EGRESS_DEVICE" proto 99 table "$table" 2>"$route_err" || {
+				log 0 "Could not install the IPv4 default route for %s into table %s via %s dev %s: %s" \
+					"$label" "$table" "$EGRESS_GATEWAY" "$EGRESS_DEVICE" "$(cat "$route_err" 2>/dev/null)"
+				teardown_egress_routing
+				return 1
+			}
 		else
-			ip route replace default dev "$EGRESS_DEVICE" proto 99 table "$table" 2>/dev/null \
-				|| { teardown_egress_routing; return 1; }
+			ip route replace default dev "$EGRESS_DEVICE" proto 99 table "$table" 2>"$route_err" || {
+				log 0 "Could not install the IPv4 default route for %s into table %s dev %s: %s" \
+					"$label" "$table" "$EGRESS_DEVICE" "$(cat "$route_err" 2>/dev/null)"
+				teardown_egress_routing
+				return 1
+			}
 		fi
 	fi
 	if [ -s "$ipv6_file" ]; then
 		if [ -n "$EGRESS_GATEWAY6" ]; then
-			ip -6 route replace default via "$EGRESS_GATEWAY6" dev "$EGRESS_DEVICE" onlink proto 99 table "$table" 2>/dev/null \
-				|| ip -6 route replace default via "$EGRESS_GATEWAY6" dev "$EGRESS_DEVICE" proto 99 table "$table" 2>/dev/null \
-				|| { teardown_egress_routing; return 1; }
+			ip -6 route replace default via "$EGRESS_GATEWAY6" dev "$EGRESS_DEVICE" onlink proto 99 table "$table" 2>"$route_err" || \
+				ip -6 route replace default via "$EGRESS_GATEWAY6" dev "$EGRESS_DEVICE" proto 99 table "$table" 2>"$route_err" || {
+				log 0 "Could not install the IPv6 default route for %s into table %s via %s dev %s: %s" \
+					"$label" "$table" "$EGRESS_GATEWAY6" "$EGRESS_DEVICE" "$(cat "$route_err" 2>/dev/null)"
+				teardown_egress_routing
+				return 1
+			}
 		else
-			ip -6 route replace default dev "$EGRESS_DEVICE" proto 99 table "$table" 2>/dev/null \
-				|| { teardown_egress_routing; return 1; }
+			ip -6 route replace default dev "$EGRESS_DEVICE" proto 99 table "$table" 2>"$route_err" || {
+				log 0 "Could not install the IPv6 default route for %s into table %s dev %s: %s" \
+					"$label" "$table" "$EGRESS_DEVICE" "$(cat "$route_err" 2>/dev/null)"
+				teardown_egress_routing
+				return 1
+			}
 		fi
 	fi
 
@@ -820,7 +857,7 @@ setup_egress_routing() {
 	expected6=$(awk 'NF { n++ } END { print n + 0 }' "$ipv6_file")
 	while read -r ip; do
 		[ -n "$ip" ] || continue
-		while ip rule del priority "$priority" to "$ip/32" lookup "$table" 2>/dev/null; do :; done
+		while ip rule del priority "$priority" to "$ip/32" 2>/dev/null; do :; done
 		if ip rule add priority "$priority" to "$ip/32" lookup "$table" 2>/dev/null; then
 			printf '4 %s %s %s\n' "$priority" "$ip" "$table" >> "$TMP_PATH/egress_rules"
 			installed=$((installed + 1))
@@ -832,7 +869,7 @@ setup_egress_routing() {
 	done < "$ipv4_file"
 	while read -r ip; do
 		[ -n "$ip" ] || continue
-		while ip -6 rule del priority "$priority" to "$ip/128" lookup "$table" 2>/dev/null; do :; done
+		while ip -6 rule del priority "$priority" to "$ip/128" 2>/dev/null; do :; done
 		if ip -6 rule add priority "$priority" to "$ip/128" lookup "$table" 2>/dev/null; then
 			printf '6 %s %s %s\n' "$priority" "$ip" "$table" >> "$TMP_PATH/egress_rules"
 			installed6=$((installed6 + 1))
@@ -844,6 +881,8 @@ setup_egress_routing() {
 	done < "$ipv6_file"
 	[ "$installed" -eq "$expected" ] && [ "$installed6" -eq "$expected6" ] && \
 		[ $((installed + installed6)) -gt 0 ] || {
+		log 0 "Egress rule installation incomplete for %s (IPv4 %s/%s, IPv6 %s/%s)." \
+			"$label" "$installed" "$expected" "$installed6" "$expected6"
 		teardown_egress_routing
 		return 1
 	}
@@ -864,9 +903,9 @@ teardown_egress_routing() {
 		while read -r family priority dest table; do
 			[ -n "$dest" ] && [ -n "$table" ] || continue
 			if [ "$family" = "6" ]; then
-				while ip -6 rule del priority "$priority" to "$dest/128" lookup "$table" 2>/dev/null; do :; done
+				while ip -6 rule del priority "$priority" to "$dest/128" 2>/dev/null; do :; done
 			else
-				while ip rule del priority "$priority" to "$dest/32" lookup "$table" 2>/dev/null; do :; done
+				while ip rule del priority "$priority" to "$dest/32" 2>/dev/null; do :; done
 			fi
 		done < "$TMP_PATH/egress_rules"
 	fi
@@ -886,12 +925,12 @@ teardown_egress_routing() {
 	[ -z "$priority" ] && priority=900
 	if [ -n "$table" ] && [ -s "$TMP_PATH/egress_rule_ips" ]; then
 		while read -r dest; do
-			[ -n "$dest" ] && while ip rule del priority "$priority" to "$dest/32" lookup "$table" 2>/dev/null; do :; done
+			[ -n "$dest" ] && while ip rule del priority "$priority" to "$dest/32" 2>/dev/null; do :; done
 		done < "$TMP_PATH/egress_rule_ips"
 	fi
 	if [ -n "$table" ] && [ -s "$TMP_PATH/egress_rule_ips6" ]; then
 		while read -r dest; do
-			[ -n "$dest" ] && while ip -6 rule del priority "$priority" to "$dest/128" lookup "$table" 2>/dev/null; do :; done
+			[ -n "$dest" ] && while ip -6 rule del priority "$priority" to "$dest/128" 2>/dev/null; do :; done
 		done < "$TMP_PATH/egress_rule_ips6"
 	fi
 	[ -n "$table" ] && ip route flush table "$table" proto 99 2>/dev/null

@@ -1495,9 +1495,9 @@ stop() {
 	[ -x "$NFT_BIN" ] && {
 		$NFT_BIN delete table inet bypass 2>/dev/null
 	}
-	while ip rule del priority 998 fwmark 0x10000/0x10000 lookup 20100 2>/dev/null; do :; done
+	while ip rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 	ip route flush table 20100 proto 99 2>/dev/null
-	while ip -6 rule del priority 998 fwmark 0x10000/0x10000 lookup 20101 2>/dev/null; do :; done
+	while ip -6 rule del priority 998 fwmark 0x10000/0x10000 2>/dev/null; do :; done
 	ip -6 route flush table 20101 proto 99 2>/dev/null
 	teardown_egress_routing
 	restore_dnsmasq_forward
