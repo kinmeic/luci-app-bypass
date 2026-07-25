@@ -317,20 +317,38 @@ run_naive_nodes() {
 	: > "$TMP_PATH/egress_map4"
 	: > "$TMP_PATH/egress_map6"
 	local node address iface iface_key ipv4_file ipv6_file node_kind index=0
+	# Resolve every selected node's endpoint in parallel. A slow resolver used to
+	# multiply each node's worst-case timeout by the node count; background jobs
+	# reduce the wall clock to the slowest single lookup. Each job writes its own
+	# per-index files, so no output can interleave.
+	: > "$TMP_PATH/resolve_jobs"
 	while read -r node; do
 		[ -n "$node" ] || continue
 		if [ "$(node_type "$node")" = "wireguard" ]; then
-			node_kind=WireGuard
 			address=$(config_n_get "$node" peer_address)
 		else
-			node_kind=Naive
 			address=$(config_n_get "$node" address)
+		fi
+		printf '%s %s %s\n' "$index" "$node" "$address" >> "$TMP_PATH/resolve_jobs"
+		{
+			resolve_all_ipv4 "$address" | awk 'NF' | sort -u > "$TMP_PATH/uplink_ips.${index}"
+			resolve_all_ipv6 "$address" | awk 'NF' | sort -u > "$TMP_PATH/uplink_ips6.${index}"
+		} &
+		index=$((index + 1))
+	done < "$TMP_PATH/selected_nodes"
+	# No ln_run child exists at this point in start(), so a bare wait only joins
+	# the resolution jobs above.
+	wait
+	while read -r index node address; do
+		[ -n "$node" ] || continue
+		if [ "$(node_type "$node")" = "wireguard" ]; then
+			node_kind=WireGuard
+		else
+			node_kind=Naive
 		fi
 		iface=$(node_egress_interface "$node")
 		ipv4_file="$TMP_PATH/uplink_ips.${index}"
 		ipv6_file="$TMP_PATH/uplink_ips6.${index}"
-		resolve_all_ipv4 "$address" | awk 'NF' | sort -u > "$ipv4_file"
-		resolve_all_ipv6 "$address" | awk 'NF' | sort -u > "$ipv6_file"
 		[ -s "$ipv4_file" ] || [ -s "$ipv6_file" ] || {
 			log 0 "%s node [%s] endpoint address [%s] could not be resolved." "$node_kind" "$node" "$address"
 			return 1
@@ -352,8 +370,7 @@ run_naive_nodes() {
 		else
 			log 0 "%s node [%s] uses the system default route." "$node_kind" "$node"
 		fi
-		index=$((index + 1))
-	done < "$TMP_PATH/selected_nodes"
+	done < "$TMP_PATH/resolve_jobs"
 
 	local conflict
 	conflict=$(
