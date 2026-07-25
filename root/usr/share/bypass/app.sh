@@ -129,15 +129,6 @@ node_egress_interface() {
 	printf '%s\n' "$iface"
 }
 
-# Return the node protocol family. Configurations created before the Type field
-# existed remain NaiveProxy nodes.
-node_type() {
-	case "$(config_n_get "$1" node_type naiveproxy)" in
-		wireguard) echo wireguard ;;
-		*) echo naiveproxy ;;
-	esac
-}
-
 # Build the unique list of nodes referenced by shunt rules and by the virtual
 # Default row, plus protocol-specific subsets used by the process adapter and
 # the native WireGuard outbound.

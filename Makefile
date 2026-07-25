@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-bypass
-PKG_VERSION:=1.9.3
+PKG_VERSION:=1.9.4
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)
 PKG_LICENSE:=MIT

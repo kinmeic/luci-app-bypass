@@ -43,6 +43,16 @@ config_t_get() {
 	printf '%s\n' "${ret:-$3}"
 }
 
+# Return the node protocol family. Configurations created before the Type field
+# existed remain NaiveProxy nodes. Lives here (not app.sh) because rule_update.sh
+# and standalone nftables.sh invocations source only this file.
+node_type() {
+	case "$(config_n_get "$1" node_type naiveproxy)" in
+		wireguard) echo wireguard ;;
+		*) echo naiveproxy ;;
+	esac
+}
+
 uint_in_range() {
 	local value=$1 minimum=$2 maximum=$3
 	case "$value" in ''|*[!0-9]*) return 1 ;; esac
@@ -714,6 +724,32 @@ get_egress_runtime() {
 # Only one outbound node's endpoint destinations are sent to this dedicated table.
 # The caller assigns a different table to each selected node, allowing nodes to
 # use different WANs without overwriting packet marks owned by mwan3/PBR.
+
+# Reclaim a policy-rule priority still occupied by orphaned bypass egress rules.
+# Kernel rules survive an aborted run which lost its egress_rules records, and
+# used to make every later start fail with "priority is already in use". Every
+# conflicting rule is logged for diagnosis, but only rules whose lookup table
+# belongs to the bypass egress table range are removed; a genuinely foreign
+# rule keeps the priority and remains fatal. Returns 0 when the priority is
+# free afterwards.
+reclaim_egress_priority() {
+	local ip_cmd=$1 priority=$2 base=${NAIVE_EGRESS_TABLE:-20200}
+	local conflicts line ltable
+	conflicts=$($ip_cmd rule show 2>/dev/null | awk -v p="${priority}:" '$1 == p')
+	[ -n "$conflicts" ] || return 0
+	printf '%s\n' "$conflicts" | while IFS= read -r line; do
+		[ -n "$line" ] || continue
+		log 0 "Policy-rule priority [%s] is held by: %s" "$priority" "$line"
+		ltable=$(printf '%s\n' "$line" | awk '{ for (i = 1; i <= NF; i++) if ($i == "lookup" || $i == "table") { print $(i+1); exit } }')
+		case "$ltable" in ''|*[!0-9]*) continue ;; esac
+		if [ "$ltable" -ge "$base" ] 2>/dev/null && [ "$ltable" -le $((base + 64)) ] 2>/dev/null; then
+			while $ip_cmd rule del priority "$priority" lookup "$ltable" 2>/dev/null; do :; done
+			log 0 "Reclaimed an orphaned bypass egress rule at priority %s (table %s)." "$priority" "$ltable"
+		fi
+	done
+	! $ip_cmd rule show 2>/dev/null | awk -v p="${priority}:" '$1 == p { found=1 } END { exit !found }'
+}
+
 setup_egress_routing() {
 	local iface=$1 table=$2 priority=$3
 	local ipv4_file=${4:-$TMP_PATH/uplink_ips}
@@ -736,11 +772,11 @@ setup_egress_routing() {
 		log 0 "Egress route table [%s] already contains foreign routes; choose another table." "$table"
 		return 1
 	fi
-	if ip rule show 2>/dev/null | awk -v p="${priority}:" '$1 == p { found=1 } END { exit !found }'; then
+	if ! reclaim_egress_priority "ip" "$priority"; then
 		log 0 "IPv4 policy-rule priority [%s] is already in use; choose another base priority." "$priority"
 		return 1
 	fi
-	if ip -6 rule show 2>/dev/null | awk -v p="${priority}:" '$1 == p { found=1 } END { exit !found }'; then
+	if ! reclaim_egress_priority "ip -6" "$priority"; then
 		log 0 "IPv6 policy-rule priority [%s] is already in use; choose another base priority." "$priority"
 		return 1
 	fi
