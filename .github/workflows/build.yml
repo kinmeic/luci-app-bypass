@@ -1,23 +1,23 @@
 name: Build & Release
 
-# Builds luci-app-bypass for BOTH OpenWrt packaging systems in parallel:
+# Builds luci-app-bypass for the supported OpenWrt packaging targets in parallel:
 #   - 24.10.0  -> .ipk (opkg)  for OpenWrt 24.10 stable & older
-#   - SNAPSHOT -> .apk (apk)   for OpenWrt main snapshot & 25.x+ (apk default)
-# Both are arch-independent (LUCI_PKGARCH:=all), so one x86_64 build per format
-# covers every target. Dependencies and the postinst/prerm scripts are resolved
-# and emitted by each SDK's own buildroot, so each package installs cleanly on
-# its target package manager.
+#   - 25.12.5  -> .apk (apk)   for OpenWrt 25.12.5 stable
+#   - SNAPSHOT -> .apk (apk)   for OpenWrt main snapshots
+# The package is arch-independent (LUCI_PKGARCH:=all), so one x86_64 build per
+# SDK covers every target. Dependencies and the postinst/prerm scripts are
+# resolved and emitted by each SDK's own buildroot.
 #
 # Why a matrix and not a repackaged .ipk->.apk: OpenWrt 24.10 explicitly ships
-# opkg (USE_APK is disabled there); apk is the default ONLY on the main branch.
-# A .ipk's Depends (e.g. libubox20240329, libc) and luci.mk-generated postinst
-# are resolved for opkg, so manually re-wrapping them as .apk would carry the
-# wrong dependency names and opkg-only script hooks. Building the .apk with the
-# apk-based (snapshot) SDK lets the buildroot produce a correct .apk instead.
+# opkg (USE_APK is disabled there). APK dependencies are also tied to the SDK
+# release: 25.12.5 ships libubox20260213, while a rolling snapshot may ship a
+# newer ABI such as libubox20260708. Each APK must therefore be built by the
+# matching apk-based SDK instead of being repackaged from another target.
 #
 # Triggers:
 #   - push tag v*            -> build + publish release (version = tag w/o 'v')
-#   - workflow_dispatch      -> build + publish release (version = input)
+#   - workflow_dispatch      -> build an Actions artifact; optionally publish
+#                               a release when publish_release is enabled
 #
 # Note: OpenWrt 23.05 is no longer built (it ships libubox20230523 which is
 # incompatible with the libubox20240329 dependency produced by the 24.10 SDK).
@@ -33,6 +33,11 @@ on:
         description: 'Release version (e.g. 1.8.3)'
         required: true
         default: '1.8.8'
+      publish_release:
+        description: 'Publish the manual build as a GitHub release'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -48,8 +53,10 @@ jobs:
           # OpenWrt 24.10 stable -> opkg/.ipk
           - sdk: "24.10.0"
             label: "24.10 (ipk)"
-          # OpenWrt main snapshot -> apk/.apk (apk is default on main; 24.10
-          # disables USE_APK, so only the snapshot SDK emits .apk)
+          # OpenWrt 25.12.5 stable -> apk/.apk
+          - sdk: "25.12.5"
+            label: "25.12.5 (apk)"
+          # OpenWrt main snapshot -> apk/.apk
           - sdk: "SNAPSHOT"
             label: "snapshot (apk)"
     steps:
@@ -113,15 +120,20 @@ jobs:
           echo "=== bin/packages tree (${{ matrix.label }}) ==="
           find bin/packages -type f 2>/dev/null || echo "(no bin/packages)"
           found=0
-          # Accept whichever format the SDK produced: 24.10 -> .ipk,
-          # SNAPSHOT -> .apk. Keep the original buildroot filename — .ipk and
-          # .apk use different naming + extensions, so there is no collision
-          # when the release job merges both artifacts.
-          for f in $(find bin/packages -type f \( -name "luci-app-bypass*.ipk" -o -name "luci-app-bypass*.apk" \) 2>/dev/null); do
-            cp "$f" "dist/$(basename "$f")"
+          # Accept whichever format the SDK produced and add the SDK target to
+          # the filename so stable 25.12.5 and rolling snapshot APKs cannot be
+          # confused when the release job merges the artifacts.
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            case "$base" in
+              *.apk) output="${base%.apk}-openwrt-${{ matrix.sdk }}.apk" ;;
+              *.ipk) output="${base%.ipk}-openwrt-${{ matrix.sdk }}.ipk" ;;
+              *) echo "Unexpected package format: $f" >&2; exit 1 ;;
+            esac
+            cp "$f" "dist/$output"
             found=1
-            echo "  collected: $f -> dist/$(basename "$f")"
-          done
+            echo "  collected: $f -> dist/$output"
+          done < <(find bin/packages -type f \( -name "luci-app-bypass*.ipk" -o -name "luci-app-bypass*.apk" \) -print0 2>/dev/null)
           [ "$found" = "1" ] || { echo "No package produced for ${{ matrix.label }}; failing"; exit 1; }
           ls -la dist/
 
@@ -134,10 +146,12 @@ jobs:
 
   release:
     name: Publish release
-    # Only publish once BOTH formats built successfully — no half-releases.
+    # Tag pushes publish releases. Manual builds publish an Actions artifact
+    # unless publish_release is explicitly enabled.
     # (fail-fast:false above keeps a single matrix failure from cancelling the
     # other; if either still fails, this job is skipped so we can fix and retag.)
     needs: build
+    if: github.event_name == 'push' || inputs.publish_release == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
