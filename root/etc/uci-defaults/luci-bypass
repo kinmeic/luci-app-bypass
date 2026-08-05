@@ -1,18 +1,78 @@
 #!/bin/sh
 
+umask 077
+
 # Install defaults only for a fresh configuration. Existing UCI state is never
 # rewritten automatically; current code supplies safe defaults for absent keys.
-[ -f /etc/config/bypass ] || cp -f /usr/share/bypass/0_default_config /etc/config/bypass
+[ -e /etc/config/bypass ] || cp /usr/share/bypass/0_default_config /etc/config/bypass
+[ -f /etc/config/bypass ] && [ ! -L /etc/config/bypass ] && chmod 600 /etc/config/bypass 2>/dev/null
 
 chmod +x /usr/share/bypass/*.sh 2>/dev/null
 [ -e /usr/share/bypass/direct_ip ] || \
-	cp -f /usr/share/bypass/0_default_direct_ip /usr/share/bypass/direct_ip
+	cp /usr/share/bypass/0_default_direct_ip /usr/share/bypass/direct_ip
+[ -f /usr/share/bypass/direct_ip ] && [ ! -L /usr/share/bypass/direct_ip ] && \
+	chmod 644 /usr/share/bypass/direct_ip 2>/dev/null
+
+# Split only the untouched legacy stock China rule. Custom rules and any
+# already-migrated configuration are never rewritten.
+if [ "$(uci -q get bypass.China)" = "shunt_rules" ] && \
+   [ "$(uci -q get bypass.China.remarks)" = "China" ] && \
+   [ "$(uci -q get bypass.China.network)" = "tcp,udp" ] && \
+   [ "$(uci -q get bypass.China.domain_list)" = "geosite:cn" ] && \
+   [ "$(uci -q get bypass.China.ip_list)" = "geoip:cn" ] && \
+   [ "$(uci -q get bypass.China.outbound)" = "_direct" ] && \
+   [ -z "$(uci -q get bypass.ChinaSite)$(uci -q get bypass.ChinaIP)" ] && \
+   [ -z "$(uci -q get bypass.China.protocol)$(uci -q get bypass.China.inbound)$(uci -q get bypass.China.source)$(uci -q get bypass.China.port)$(uci -q get bypass.China.egress_interface)" ]; then
+	uci -q rename bypass.China=ChinaSite
+	uci -q set bypass.ChinaSite.remarks=ChinaSite
+	uci -q delete bypass.ChinaSite.ip_list
+	uci -q set bypass.ChinaIP=shunt_rules
+	uci -q set bypass.ChinaIP.remarks=ChinaIP
+	uci -q set bypass.ChinaIP.network='tcp,udp'
+	uci -q set bypass.ChinaIP.ip_list='geoip:cn'
+	uci -q set bypass.ChinaIP.outbound='_direct'
+	uci -q commit bypass
+fi
+
+# One-time compatibility migration for the old stock PrivateIP rule.  Only the
+# exact package-owned rule shape is removed; a user repurposing that section is
+# left untouched. Merge first, normalize exact duplicates, and collapse the old
+# multicast/reserved pair when the covering 224.0.0.0/3 is present.
+if [ "$(uci -q get bypass.PrivateIP)" = "shunt_rules" ] && \
+   [ "$(uci -q get bypass.PrivateIP.outbound)" = "_direct" ] && \
+   [ "$(uci -q get bypass.PrivateIP.remarks)" = "PrivateIP" ] && \
+   [ -f /usr/share/bypass/direct_ip ] && [ ! -L /usr/share/bypass/direct_ip ]; then
+	private_norm=$(uci -q get bypass.PrivateIP.ip_list | sed '/^[[:space:]]*$/d' | sort -u)
+	stock_private=$(printf '%s\n' \
+		0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
+		172.16.0.0/12 192.0.0.0/24 192.0.2.0/24 192.88.99.0/24 \
+		192.168.0.0/16 198.51.100.0/24 203.0.113.0/24 224.0.0.0/3 | sort -u)
+	if [ "$private_norm" = "$stock_private" ]; then
+		direct_tmp=/usr/share/bypass/.direct_ip.migrate.$$
+		{
+			cat /usr/share/bypass/direct_ip
+			printf '%s\n' "$private_norm"
+		} | sed 's/\r$//;s/^[[:space:]]*//;s/[[:space:]]*$//' | \
+			awk '!seen[$0]++' > "$direct_tmp"
+		if grep -Fxq '224.0.0.0/3' "$direct_tmp"; then
+			sed -i '/^224\.0\.0\.0\/4$/d;/^240\.0\.0\.0\/4$/d' "$direct_tmp"
+		fi
+		if chmod 644 "$direct_tmp" && mv -f "$direct_tmp" /usr/share/bypass/direct_ip; then
+			uci -q delete bypass.PrivateIP
+			uci -q commit bypass
+		else
+			rm -f "$direct_tmp"
+		fi
+	fi
+fi
 
 # Refresh the tiny init wrapper from its canonical package copy. This is
 # executable/package plumbing, not a configuration migration.
 if [ -s /usr/share/bypass/bypass.init ]; then
-	cp -f /usr/share/bypass/bypass.init /etc/init.d/bypass
-	chmod 755 /etc/init.d/bypass
+	init_tmp=/etc/init.d/.bypass.install.$$
+	cp /usr/share/bypass/bypass.init "$init_tmp" && chmod 755 "$init_tmp" && \
+		mv -f "$init_tmp" /etc/init.d/bypass
+	rm -f "$init_tmp"
 	rm -f /etc/init.d/bypass.apk-new /etc/init.d/bypass-opkg 2>/dev/null
 	/etc/init.d/bypass enable >/dev/null 2>&1
 fi
