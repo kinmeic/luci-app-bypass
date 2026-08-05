@@ -34,38 +34,6 @@ if [ "$(uci -q get bypass.China)" = "shunt_rules" ] && \
 	uci -q commit bypass
 fi
 
-# One-time compatibility migration for the old stock PrivateIP rule.  Only the
-# exact package-owned rule shape is removed; a user repurposing that section is
-# left untouched. Merge first, normalize exact duplicates, and collapse the old
-# multicast/reserved pair when the covering 224.0.0.0/3 is present.
-if [ "$(uci -q get bypass.PrivateIP)" = "shunt_rules" ] && \
-   [ "$(uci -q get bypass.PrivateIP.outbound)" = "_direct" ] && \
-   [ "$(uci -q get bypass.PrivateIP.remarks)" = "PrivateIP" ] && \
-   [ -f /usr/share/bypass/direct_ip ] && [ ! -L /usr/share/bypass/direct_ip ]; then
-	private_norm=$(uci -q get bypass.PrivateIP.ip_list | sed '/^[[:space:]]*$/d' | sort -u)
-	stock_private=$(printf '%s\n' \
-		0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
-		172.16.0.0/12 192.0.0.0/24 192.0.2.0/24 192.88.99.0/24 \
-		192.168.0.0/16 198.51.100.0/24 203.0.113.0/24 224.0.0.0/3 | sort -u)
-	if [ "$private_norm" = "$stock_private" ]; then
-		direct_tmp=/usr/share/bypass/.direct_ip.migrate.$$
-		{
-			cat /usr/share/bypass/direct_ip
-			printf '%s\n' "$private_norm"
-		} | sed 's/\r$//;s/^[[:space:]]*//;s/[[:space:]]*$//' | \
-			awk '!seen[$0]++' > "$direct_tmp"
-		if grep -Fxq '224.0.0.0/3' "$direct_tmp"; then
-			sed -i '/^224\.0\.0\.0\/4$/d;/^240\.0\.0\.0\/4$/d' "$direct_tmp"
-		fi
-		if chmod 644 "$direct_tmp" && mv -f "$direct_tmp" /usr/share/bypass/direct_ip; then
-			uci -q delete bypass.PrivateIP
-			uci -q commit bypass
-		else
-			rm -f "$direct_tmp"
-		fi
-	fi
-fi
-
 # Refresh the tiny init wrapper from its canonical package copy. This is
 # executable/package plumbing, not a configuration migration.
 if [ -s /usr/share/bypass/bypass.init ]; then
