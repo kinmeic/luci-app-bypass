@@ -30,9 +30,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.8.3)'
+        description: 'Release version (e.g. 2.1.0)'
         required: true
-        default: '2.0.2'
+        default: '2.1.0'
       publish_release:
         description: 'Publish the manual build as a GitHub release'
         required: false
@@ -40,7 +40,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -153,6 +153,8 @@ jobs:
     needs: build
     if: github.event_name == 'push' || inputs.publish_release == true
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,11 +163,14 @@ jobs:
       - name: Resolve version
         id: ver
         shell: bash
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$RELEASE_EVENT" = "push" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="${{ github.event.inputs.version }}"
+            VERSION="$INPUT_VERSION"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
