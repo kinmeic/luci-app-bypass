@@ -504,6 +504,21 @@ printf '%s %s %s %s' "$DOMESTIC_DNS" "$NODE_SOCKS_PORT" "$NAIVE_EGRESS_TABLE" "$
         self.assertLessEqual(len(result['log_base64']), 16384)
         self.assertLessEqual(len(base64.b64decode(result['log_base64'])), 12288)
 
+    def test_log_rpc_falls_back_when_base64_is_missing(self):
+        (self.state / 'log').write_text('diagnostic line\n')
+        result = json.loads(self.run_shell('''
+tail_bin=$(command -v tail)
+tr_bin=$(command -v tr)
+mkdir -p "$TMP_PATH/tools"
+ln -s "$tail_bin" "$TMP_PATH/tools/tail"
+ln -s "$tr_bin" "$TMP_PATH/tools/tr"
+PATH="$TMP_PATH/tools"
+do_log_tail 20
+'''))
+        self.assertEqual(result['log'], 'diagnostic line')
+        self.assertNotIn('log_base64', result)
+        self.assertIn('coreutils-base64', result['error'])
+
     def test_monitor_recovers_live_naive_with_missing_listener(self):
         monitor = (RUNTIME / 'monitor.sh').read_text()
         loop = monitor[monitor.index('last_failed=""'):]

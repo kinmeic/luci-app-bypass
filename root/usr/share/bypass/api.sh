@@ -559,14 +559,28 @@ do_wireguard_psk() {
 
 # log_tail [n] -> { log }
 do_log_tail() {
-	local n=${1:-200}
+	local n=${1:-200} text encoded
 	uint_in_range "$n" 1 1000 || n=200
 	json_init
 	if [ -s "$LOG_FILE" ]; then
 		# A line limit alone does not bound verbose component diagnostics. Encode
 		# at most 12 KiB so the JSON response fits rpcd and byte-boundary cuts do
 		# not make a UTF-8 JSON string invalid.
-		json_add_string log_base64 "$(tail -n "$n" "$LOG_FILE" 2>/dev/null | tail -c 12288 | base64 | tr -d '\n')"
+		text=$(tail -n "$n" "$LOG_FILE" 2>/dev/null | tail -c 12288)
+		if command -v base64 >/dev/null 2>&1; then
+			encoded=$(printf '%s' "$text" | base64 2>/dev/null | tr -d '\n')
+			if [ -n "$encoded" ] || [ -z "$text" ]; then
+				json_add_string log_base64 "$encoded"
+			else
+				json_add_string log "$text"
+				json_add_string error "base64 encoding failed; install coreutils-base64"
+			fi
+		else
+			# OpenWrt images may omit the optional BusyBox base64 applet. Keep
+			# the log page useful while the package dependency is repaired.
+			json_add_string log "$text"
+			json_add_string error "base64 command unavailable; install coreutils-base64"
+		fi
 	else
 		json_add_string log ""
 		json_add_string error "no log yet"

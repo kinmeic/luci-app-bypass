@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-bypass
-PKG_VERSION:=2.1.2
+PKG_VERSION:=2.1.3
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)
 PKG_LICENSE:=MIT
@@ -24,7 +24,7 @@ LUCI_PKGARCH:=all
 # This application only supports fw4/nftables. Keep the firewall userspace and
 # kernel expressions as runtime dependencies so installing the generated
 # package also installs everything required by REDIRECT and TPROXY modes.
-LUCI_DEPENDS:=+ca-bundle +curl +ip-full +resolveip +libubox \
+LUCI_DEPENDS:=+ca-bundle +coreutils-base64 +curl +ip-full +resolveip +libubox \
 	+nftables +kmod-nft-nat +kmod-nft-tproxy +kmod-nft-socket
 
 define Package/$(PKG_NAME)/config
