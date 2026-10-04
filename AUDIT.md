@@ -1,6 +1,6 @@
 # 代码审计与修复记录
 
-日期：2026-10-04。范围为本仓库全部运行脚本、LuCI 页面、默认配置、RPC ACL、安装/卸载脚本和构建工作流。审计基于当前工作区，保留了原先未提交的 2.1.1 版本及 APK 更新监控修改；后续补丁版本为 2.1.2、2.1.3，当前补丁版本为 2.1.4。
+日期：2026-10-04。范围为本仓库全部运行脚本、LuCI 页面、默认配置、RPC ACL、安装/卸载脚本和构建工作流。审计基于当前工作区，保留了原先未提交的 2.1.1 版本及 APK 更新监控修改；后续补丁版本为 2.1.2、2.1.3、2.1.4，当前补丁版本为 2.1.5。
 
 ## 确认并修复的问题
 
@@ -15,6 +15,7 @@
 | P1 | 当前未提交的后台重启修改在新 Shell 中没有定义 `READY_FILE`，因此排队的重启会被跳过。 | `monitor.sh` 在后台 worker 内显式设置路径；覆盖重启执行和失败重试。 |
 | P1 | OpenWrt 25 的 APK post-install 在数据库事务锁仍持有时直接重启 Bypass；连续更新 BypassCore 和 LuCI 包时会与文件替换并行，造成启动失败或暂时没有日志。 | post-install 和运行期监控统一等待 APK 事务锁释放后再重启；新增锁释放回归测试。 |
 | P2 | OpenWrt 25 默认 BusyBox 镜像可能没有 `base64` 小程序；日志 RPC 的编码命令失败后仍返回空的 `log_base64`，LuCI 因此显示空白。 | 声明 `coreutils-base64` 运行依赖；日志 RPC 在命令缺失或编码失败时返回原文和明确错误，不再静默返回空日志。 |
+| P2 | 清空日志后，日志 RPC 将正常的空文件返回为 `no log yet` 错误，下一次页面轮询显示 `Error: no log yet`。 | `api.sh` 对空文件或尚未创建的日志返回空结果；新增清空、重复轮询及已有写入进程继续记录的回归测试。 |
 | P1 | OpenWrt 25/新 BypassCore 在冷启动时加载 GeoData 和路由快照可能超过原 20 秒监听等待上限；核心仍在工作时被 LuCI 应用主动停止。 | `utils.sh` 将核心启动等待上限提高到 120 秒，并每 10 秒记录仍在初始化的进度；真正无响应的进程仍会超时并失败关闭。 |
 | P1 | Naive 进程仍存活但 SOCKS 监听失效时，监控只检查 PID，不能恢复服务。 | `monitor.sh` 同时检查监听端口，保留连续失败阈值。 |
 | P1 | 多个接口名称以换行分隔，热插拔函数却按空格匹配，漏掉需要修复路由的接口。 | `98-bypass` 使用整行精确匹配。 |
@@ -36,7 +37,7 @@ APK 数据库使用 flock 的假设与 [apk-tools 官方源码](https://github.c
 
 ## 验证
 
-新增 `tests/test_runtime.py`，当前有 **32 项**测试：在临时目录中执行仓库的真实 Shell 函数，替换 UCI、网络和服务边界；前端分块传输使用 Node.js 执行实际页面函数。覆盖关闭规则、端口冲突、慢速 BypassCore 冷启动、只读诊断、文件描述符继承、缓存并发写入、日志 inode、缺少 base64 时的日志回退、调度、APK 事务等待、后台重启、等待锁期间取消恢复、GeoData 回滚、备份恶意成员、分块传输及全部 Shell/JS/JSON 语法。
+新增 `tests/test_runtime.py`，当前有 **33 项**测试：在临时目录中执行仓库的真实 Shell 函数，替换 UCI、网络和服务边界；前端分块传输使用 Node.js 执行实际页面函数。覆盖关闭规则、端口冲突、慢速 BypassCore 冷启动、只读诊断、文件描述符继承、缓存并发写入、日志 inode、清空后的日志轮询、缺少 base64 时的日志回退、调度、APK 事务等待、后台重启、等待锁期间取消恢复、GeoData 回滚、备份恶意成员、分块传输及全部 Shell/JS/JSON 语法。
 
 运行命令：
 
@@ -49,11 +50,11 @@ shellcheck -s ash -S warning -e SC1090,SC2034,SC2154 \
 git diff --check
 ```
 
-已通过本机 `/bin/sh` 与 `dash` 回归测试、ShellCheck 0.11.0 的 ash 模式检查、JavaScript/JSON 语法检查及 diff 格式检查。ShellCheck 仅排除动态 source、跨脚本变量和热插拔环境变量对应的三类告警。新增 `.github/workflows/audit.yml` 在 push/PR 上重复运行这些检查；本次尚未触发远端 CI。
+已通过本机 `/bin/sh` 与 `dash` 回归测试、ShellCheck 0.11.0 的 ash 模式检查、JavaScript/JSON 语法检查及 diff 格式检查。ShellCheck 仅排除动态 source、跨脚本变量和热插拔环境变量对应的三类告警。新增 `.github/workflows/audit.yml` 在 push/PR 上重复运行这些检查；2.1.4 的远端审计及三个 SDK 构建已通过。
 
 ## 验证边界与设备验收
 
-当前执行环境是 macOS，未连接路由器，也没有 OpenWrt SDK。此次没有执行 IPK/APK 编译、真实 BypassCore/NaiveProxy 启动、Linux nft 内核规则加载、netifd/fw4/dnsmasq 联动或 LuCI 浏览器端端到端测试。测试替身不验证这些外部组件的实际行为，也不是穷尽性安全证明。
+当前执行环境是 macOS，未连接路由器，也没有本地 OpenWrt SDK。IPK/APK 编译由远端工作流执行；本机没有执行真实 BypassCore/NaiveProxy 启动、Linux nft 内核规则加载、netifd/fw4/dnsmasq 联动或 LuCI 浏览器端端到端测试。用户反馈 2.1.4 在 OpenWrt 25 已成功启动。测试替身不验证这些外部组件的实际行为，也不是穷尽性安全证明。
 
 发布前在目标固件验证：
 

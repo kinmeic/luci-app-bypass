@@ -518,6 +518,25 @@ printf '%s %s %s %s' "$DOMESTIC_DNS" "$NODE_SOCKS_PORT" "$NAIVE_EGRESS_TABLE" "$
         self.assertLessEqual(len(result['log_base64']), 16384)
         self.assertLessEqual(len(base64.b64decode(result['log_base64'])), 12288)
 
+    def test_clear_log_polling_is_empty_and_writer_can_resume(self):
+        responses = self.run_shell(r'''
+do_log_tail 20
+exec 5>>"$LOG_FILE"
+printf 'old message\n' >&5
+do_clear_log
+do_log_tail 20
+do_log_tail 20
+printf 'new message\n' >&5
+do_log_tail 20
+exec 5>&-
+''').splitlines()
+        missing, cleared, empty, polled, resumed = map(json.loads, responses)
+        self.assertEqual(missing, {'log': ''})
+        self.assertEqual(cleared, {'code': 0})
+        self.assertEqual(empty, {'log': ''})
+        self.assertEqual(polled, {'log': ''})
+        self.assertEqual(base64.b64decode(resumed['log_base64']), b'new message')
+
     def test_log_rpc_falls_back_when_base64_is_missing(self):
         (self.state / 'log').write_text('diagnostic line\n')
         result = json.loads(self.run_shell('''

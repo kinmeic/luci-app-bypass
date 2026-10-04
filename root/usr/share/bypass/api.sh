@@ -582,8 +582,9 @@ do_log_tail() {
 			json_add_string error "base64 command unavailable; install coreutils-base64"
 		fi
 	else
+		# A missing/empty log is normal before the first message and after
+		# clear_log. Return an empty result so polling keeps the page blank.
 		json_add_string log ""
-		json_add_string error "no log yet"
 	fi
 	emit
 }
