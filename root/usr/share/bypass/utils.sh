@@ -95,23 +95,36 @@ get_cache_var() {
 	}
 }
 
-set_cache_var() {
-	local key="${1}"
-	shift 1
-	local val="$*"
+# Serialize read/modify/write and replace atomically: fw4 and lifecycle helpers
+# use different operation locks but share this state file. fd 5 is reserved for
+# this short-lived subshell; readers always see one complete version of var.
+write_cache_var() (
+	local key=$1 value=$2 operation=$3 tmp
 	case "$key" in ''|*[!A-Za-z0-9_]*) return 1 ;; esac
-	val=$(printf '%s' "$val" | tr -d '\r\n"')
-	[ -n "${key}" ] && [ -n "${val}" ] && {
-		[ ! -d "$TMP_PATH" ] && mkdir -p "$TMP_PATH"
-		sed -i "/^${key}=/d" "$TMP_PATH/var" >/dev/null 2>&1
-		echo "${key}=\"${val}\"" >> "$TMP_PATH/var"
-	}
+	mkdir -p "$TMP_PATH" || return 1
+	exec 5>"$TMP_PATH/cache.lock" || return 1
+	flock -x 5 || return 1
+	tmp=$(mktemp "$TMP_PATH/.var.XXXXXX") || return 1
+	trap 'rm -f "$tmp"' EXIT
+	if [ -f "$TMP_PATH/var" ]; then
+		sed "/^${key}=/d" "$TMP_PATH/var" > "$tmp" || return 1
+	fi
+	if [ "$operation" = set ]; then
+		printf '%s="%s"\n' "$key" "$value" >> "$tmp" || return 1
+	fi
+	mv -f "$tmp" "$TMP_PATH/var"
+)
+
+set_cache_var() {
+	local key=$1 value
+	shift
+	value=$(printf '%s' "$*" | tr -d '\r\n"')
+	[ -n "$value" ] || return 1
+	write_cache_var "$key" "$value" set
 }
 
 unset_cache_var() {
-	local key="${1}"
-	case "$key" in ''|*[!A-Za-z0-9_]*) return 1 ;; esac
-	[ -s "$TMP_PATH/var" ] && sed -i "/^${key}=/d" "$TMP_PATH/var" >/dev/null 2>&1
+	write_cache_var "$1" '' unset
 }
 
 # Remove one optional pair of URL-style brackets from a host literal.
@@ -145,8 +158,10 @@ bound_log_file() {
 	[ "${size:-0}" -le "$maximum" ] 2>/dev/null && return 0
 	tmp="${file}.trim.$$"
 	if tail -c "$keep" "$file" > "$tmp" 2>/dev/null; then
-		chmod 600 "$tmp" 2>/dev/null
-		mv -f "$tmp" "$file"
+		# Component stderr stays open for the process lifetime. Replacing the
+		# inode would strand all later output in an unlinked file.
+		cat "$tmp" > "$file"
+		rm -f "$tmp"
 	else
 		rm -f "$tmp"
 	fi
@@ -245,6 +260,22 @@ process_image_current() {
 	esac
 }
 
+# APK replaces packages under an exclusive database transaction lock. A runtime
+# executable can already have changed while that transaction is still running,
+# so wait for the lock to be released before restarting dependent services.
+apk_transaction_active() {
+	local lock=/lib/apk/db/lock
+	[ -e /lib/apk/db/installed ] && [ -e "$lock" ] || return 1
+	exec 8>>"$lock" || return 0
+	if flock -xn 8; then
+		flock -u 8 2>/dev/null
+		exec 8>&-
+		return 1
+	fi
+	exec 8>&-
+	return 0
+}
+
 check_port_exists() {
 	local port=$1
 	local protocol=$2
@@ -297,42 +328,40 @@ check_port_exists() {
 	'
 }
 
+# Optional third argument lists ports reserved by configs not yet listening.
 get_new_port() {
-	local default_start_port=2001
-	local min_port=1025
-	local max_port=49151
-	local port=$1
-	local last_get_new_port_auto
+	local default_start_port=2001 min_port=1 max_port=65535 port=$1
+	local reserved=" $3 " start protocol last_get_new_port_auto
 	if [ "$1" = "auto" ]; then
-		last_get_new_port_auto=$(get_cache_var "last_get_new_port_auto")
-		if [ -n "$last_get_new_port_auto" ]; then
-			port=$last_get_new_port_auto
-			port=$((port + 1))
+		last_get_new_port_auto=$(get_cache_var last_get_new_port_auto)
+		if uint_in_range "$last_get_new_port_auto" 1 65534; then
+			port=$((last_get_new_port_auto + 1))
 		else
 			port=$default_start_port
 		fi
 	fi
-	case "$port" in ''|*[!0-9]*) port=$default_start_port ;; esac
-	[ "$port" -lt $min_port ] 2>/dev/null && port=$default_start_port
-	[ "$port" -gt $max_port ] 2>/dev/null && port=$default_start_port
-	local protocol
+	uint_in_range "$port" "$min_port" "$max_port" || port=$default_start_port
+	# Normalize decimal UCI input before ash arithmetic (e.g. 01088).
+	port=$(printf '%s\n' "$port" | awk '{ printf "%d", $1 }')
+	start=$port
 	protocol=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')
-	local result
-	result=$(check_port_exists "$port" "$protocol")
-	if [ "$result" != 0 ]; then
-		local temp=
-		if [ "$port" -lt $max_port ]; then
-			temp=$((port + 1))
-		elif [ "$port" -gt $min_port ]; then
-			temp=$((port - 1))
-		else
-			temp=$default_start_port
-		fi
-		get_new_port "$temp" "$protocol"
-	else
-		[ "$1" = "auto" ] && set_cache_var "last_get_new_port_auto" "$port"
-		echo "$port"
-	fi
+	while :; do
+		case "$reserved" in
+			*" $port "*) ;;
+			*)
+				if [ "$(check_port_exists "$port" "$protocol")" = "0" ]; then
+					[ "$1" = "auto" ] && set_cache_var last_get_new_port_auto "$port"
+					echo "$port"
+					return 0
+				fi
+				;;
+		esac
+		port=$((port + 1))
+		[ "$port" -le "$max_port" ] || port=$min_port
+		[ "$port" != "$start" ] || break
+	done
+	log 0 "No free %s port is available." "$protocol"
+	return 1
 }
 
 # ------------------------------------------------------------------------------
@@ -437,7 +466,9 @@ ln_run() {
 
 	mkdir -p "$TMP_PID_PATH" "$(dirname "$output")"
 	rm -f "$TMP_PID_PATH/${ln_name}.pid"
-	"$file_func" "$@" >"$output" 2>&1 &
+	# Long-lived children must not retain operation locks inherited from init,
+	# NTP hotplug or an API request after those callers have returned.
+	"$file_func" "$@" 5>&- 6>&- 7>&- 8>&- 9>&- >"$output" 2>&1 &
 	local pid=$!
 	printf '%s\n' "$pid" > "$TMP_PID_PATH/${ln_name}.pid"
 	kill -0 "$pid" 2>/dev/null
@@ -505,7 +536,7 @@ get_host_ip() {
 	if [ "$family" = "ipv6" ]; then
 		case "$host" in *:*) isip=$host; ip=$host ;; esac
 	else
-		isip=$(echo "$host" | grep -E "([0-9]{1,3}[\.]){3}[0-9]{1,3}")
+		isip=$(printf '%s\n' "$host" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$')
 		[ -n "$isip" ] && ip=$isip
 	fi
 	[ -z "$isip" ] && {
@@ -521,10 +552,12 @@ get_host_ip() {
 # Resolve all A records for a host (DNS round-robin safe). Writes one IP per
 # line to stdout (used to populate the bypass_uplink egress set).
 resolve_all_ipv4() {
-	local host=$1
+	local host
+	host=$(strip_host_brackets "$1")
 	[ -z "$host" ] && return 0
-	# Already an IP?
-	echo "$host" | grep -qE "([0-9]{1,3}[\.]){3}[0-9]{1,3}" && {
+	case "$host" in *:*) return 0 ;; esac
+	# Match a complete literal, not a hostname containing a dotted-quad label.
+	printf '%s\n' "$host" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' && {
 		echo "$host"
 		return 0
 	}
@@ -532,9 +565,11 @@ resolve_all_ipv4() {
 }
 
 resolve_all_ipv6() {
-	local host=$1
+	local host
+	host=$(strip_host_brackets "$1")
 	[ -z "$host" ] && return 0
-	echo "$host" | grep -q ':' && { echo "$host"; return 0; }
+	case "$host" in *:*) printf '%s\n' "$host"; return 0 ;; esac
+	printf '%s\n' "$host" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' && return 0
 	resolveip -6 -t 3 "$host" 2>/dev/null | awk '!seen[$0]++'
 }
 
@@ -709,6 +744,12 @@ bypasscore_control_request() {
 bypasscore_ready() {
 	local response
 	response=$(bypasscore_control_request GET /v1/ready) || return 1
+	printf '%s' "$response" | grep -Eq '"ready"[[:space:]]*:[[:space:]]*true'
+}
+
+bypasscore_nftsets_ready() {
+	local response
+	response=$(bypasscore_control_request POST /v1/dns/nftsets/probe "") || return 1
 	printf '%s' "$response" | grep -Eq '"ready"[[:space:]]*:[[:space:]]*true'
 }
 

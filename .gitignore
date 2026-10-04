@@ -14,3 +14,7 @@
 *.apk
 *.bin
 .tmp/
+
+# Host-side regression tests
+__pycache__/
+*.pyc

@@ -1,0 +1,29 @@
+name: Runtime audit checks
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run host-side regressions
+        run: python3 -m unittest discover -s tests -v
+      - name: Check dash compatibility
+        env:
+          BYPASS_TEST_SHELL: /bin/dash
+        run: python3 -m unittest discover -s tests -v
+      - name: Check OpenWrt shell scripts
+        # Dynamic sourcing, cross-file variables and hotplug environment values
+        # are expected in this integration. Other warning/error checks stay on.
+        run: |
+          shellcheck -s ash -S warning -e SC1090,SC2034,SC2154 \
+            root/usr/share/bypass/*.sh root/usr/share/bypass/*.init \
+            root/etc/uci-defaults/* root/etc/hotplug.d/*/*

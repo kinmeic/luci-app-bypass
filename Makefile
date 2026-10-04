@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-bypass
-PKG_VERSION:=2.1.0
+PKG_VERSION:=2.1.1
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)
 PKG_LICENSE:=MIT
@@ -78,6 +78,7 @@ endef
 define Package/$(PKG_NAME)/prerm
 	[ -n "$${IPKG_INSTROOT}" ] || [ "$${PKG_UPGRADE}" = "1" ] || { \
 		/etc/init.d/bypass stop >/dev/null 2>&1
+		/usr/share/bypass/app.sh remove_crontab >/dev/null 2>&1
 		/etc/init.d/bypass disable >/dev/null 2>&1
 		rm -f /etc/init.d/bypass
 	}
