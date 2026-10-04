@@ -112,6 +112,20 @@ get_new_port 01088 tcp
 ''')
         self.assertEqual(output.splitlines(), ['1091', '3', '65000', '1089'])
 
+    def test_bypasscore_start_guard_allows_slow_cold_boot(self):
+        output = self.run_shell('''
+# A cold GeoData load can take more than the former 20-second guard. Simulate
+# the core becoming ready on the 21st probe and ensure the finite extended
+# timeout accepts it instead of stopping a healthy process.
+ticks=0
+process_alive() { return 0; }
+check_port_exists() { [ "$ticks" -ge 21 ] && echo 1 || echo 0; }
+sleep() { ticks=$((ticks + 1)); }
+wait_for_listener bypasscore 1041 tcp "$BYPASSCORE_START_TIMEOUT" "$TMP_PATH/bypasscore.log"
+printf '%s %s\n' "$BYPASSCORE_START_TIMEOUT" "$ticks"
+''')
+        self.assertEqual(output, '120 21')
+
     def test_node_ports_are_unique_and_do_not_take_core_ports(self):
         output = self.run_shell('''
 NODE_SOCKS_PORT=1088 REDIR_PORT=1089 BYPASSCORE_DNS_PORT=1091 DEFAULT_NODE=node_b

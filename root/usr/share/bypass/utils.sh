@@ -22,6 +22,13 @@ TMP_BIN_PATH=${TMP_PATH}/bin
 TMP_PID_PATH=${TMP_PATH}/pids
 BYPASSCORE_CFG=${TMP_PATH}/bypasscore/config.json
 BYPASSCORE_CONTROL_SOCKET=${TMP_PATH}/bypasscore/control.sock
+# BypassCore builds its DNS/routing snapshot and loads every referenced
+# GeoData matcher before it binds the first inbound. On low-power OpenWrt 25
+# devices (especially immediately after a package upgrade) this can exceed the
+# old 20-second guard even though the process is healthy and still working.
+# Keep a finite upper bound so a genuinely hung core still fails closed, while
+# allowing a cold GeoData load to finish.
+BYPASSCORE_START_TIMEOUT=120
 
 . /lib/functions/network.sh
 
@@ -448,6 +455,10 @@ wait_for_listener() {
 			fi
 		else
 			[ "$(check_port_exists "$port" "$protocol")" -gt 0 ] 2>/dev/null && return 0
+		fi
+		if [ "$elapsed" -gt 0 ] && [ $((elapsed % 10)) = "0" ]; then
+			log 0 "%s is still starting (%s/%s seconds); waiting for %s/%s." \
+				"$name" "$elapsed" "$timeout" "$protocol" "$port"
 		fi
 		elapsed=$((elapsed + 1))
 		sleep 1

@@ -1116,7 +1116,7 @@ run_bypasscore_core() {
 	local log_file="${cfg_dir}/bypasscore.log"
 	: > "$log_file"
 	ln_run 0 "$BYPASSCORE_FILE" "bypasscore" "$log_file" -config "$BYPASSCORE_CFG" -log-level "$LOG_LEVEL" -run || return 1
-	wait_for_listener bypasscore "$REDIR_PORT" tcp 20 "$log_file" || return 1
+	wait_for_listener bypasscore "$REDIR_PORT" tcp "$BYPASSCORE_START_TIMEOUT" "$log_file" || return 1
 	wait_for_listener bypasscore "$BYPASSCORE_DNS_PORT" udp 5 "$log_file" || return 1
 	wait_for_listener bypasscore "$BYPASSCORE_DNS_PORT" tcp 5 "$log_file" || return 1
 	set_cache_var ACL_GLOBAL_redir_port "$REDIR_PORT"
