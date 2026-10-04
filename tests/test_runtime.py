@@ -280,6 +280,23 @@ boot_func
 [ ! -f "$TMP_PATH/restarts" ]
 ''')
 
+    def test_apk_restart_waits_for_transaction_release(self):
+        output = self.run_shell(r'''
+checks=0
+apk_transaction_active() {
+    checks=$((checks + 1))
+    [ "$checks" -le 2 ]
+}
+log() { echo "log:$*"; }
+sleep() { echo "sleep:$1"; }
+wait_for_apk_transaction
+echo "checks=$checks"
+''')
+        self.assertEqual(output.splitlines(), [
+            'log:0 Waiting for the APK package transaction to finish before restarting Bypass.',
+            'sleep:2', 'sleep:2', 'checks=3'
+        ])
+
     def test_queued_automatic_restarts_respect_stop_after_lock(self):
         service = source('service.init')
         runner = self.root / 'app-runner'

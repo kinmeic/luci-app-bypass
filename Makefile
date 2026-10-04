@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-bypass
-PKG_VERSION:=2.1.1
+PKG_VERSION:=2.1.2
 PKG_RELEASE:=1
 PKG_PO_VERSION:=$(PKG_VERSION)
 PKG_LICENSE:=MIT
@@ -67,7 +67,11 @@ define Package/$(PKG_NAME)/postinst
 		rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
 		rm -rf /tmp/luci-modulecache/
 		if [ "$$(uci -q get bypass.@global[0].enabled)" = "1" ]; then
-			( sleep 2; /etc/init.d/bypass restart ) >/dev/null 2>&1 &
+			( . /usr/share/bypass/utils.sh
+				wait_for_apk_transaction
+				sleep 2
+				/etc/init.d/bypass restart
+			) </dev/null >/dev/null 2>&1 &
 		fi
 		exit 0
 	}

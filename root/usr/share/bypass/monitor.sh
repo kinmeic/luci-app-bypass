@@ -56,16 +56,7 @@ schedule_full_restart() {
 		READY_FILE=/var/lock/bypass_ready.lock
 		: > "$1" || exit 1
 		log 0 "Detached Bypass restart process started for %s." "$2"
-		waited=0
-		while apk_transaction_active; do
-			if [ "$waited" = "0" ]; then
-				log 0 "Waiting for the APK package transaction to finish before restarting Bypass."
-			elif [ $((waited % 60)) = "0" ]; then
-				log 0 "APK package transaction is still active after %s seconds; Bypass restart remains queued." "$waited"
-			fi
-			sleep 2
-			waited=$((waited + 2))
-		done
+		wait_for_apk_transaction
 		sleep 2
 		[ -f "$READY_FILE" ] || {
 			log 0 "Bypass was stopped while waiting for the package transaction; skipping the queued restart."

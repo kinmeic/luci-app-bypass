@@ -37,7 +37,7 @@ return view.extend({
 				if (r.log_base64 != null) {
 					var bytes = Uint8Array.from(atob(r.log_base64), function (c) { return c.charCodeAt(0); });
 					ta.value = new TextDecoder().decode(bytes);
-				} else ta.value = r.log || '';
+				} else ta.value = r.log || (r.error ? _('Error: ') + r.error : '');
 				// Auto-scroll on first load, or if the user was already at the bottom.
 				if (firstLoad || wasBottom) {
 					ta.scrollTop = ta.scrollHeight;

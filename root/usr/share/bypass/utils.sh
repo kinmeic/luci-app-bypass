@@ -276,6 +276,24 @@ apk_transaction_active() {
 	return 0
 }
 
+# Package post-install hooks run while apk still holds its database lock. A
+# service restart from that hook can race the final file replacement (and the
+# next package in a multi-package upgrade). Wait in a detached child so the
+# package transaction itself can finish and release the lock first. On opkg/
+# OpenWrt 24 the detector is inactive and this returns immediately.
+wait_for_apk_transaction() {
+	local waited=0
+	while apk_transaction_active; do
+		if [ "$waited" = "0" ]; then
+			log 0 "Waiting for the APK package transaction to finish before restarting Bypass."
+		elif [ $((waited % 60)) = "0" ]; then
+			log 0 "APK package transaction is still active after %s seconds; Bypass restart remains queued." "$waited"
+		fi
+		sleep 2
+		waited=$((waited + 2))
+	done
+}
+
 check_port_exists() {
 	local port=$1
 	local protocol=$2
