@@ -30,9 +30,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 2.1.5)'
+        description: 'Release version (e.g. 2.1.6)'
         required: true
-        default: '2.1.5'
+        default: '2.1.6'
       publish_release:
         description: 'Publish the manual build as a GitHub release'
         required: false
